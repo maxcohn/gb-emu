@@ -1,17 +1,4 @@
-/*
-struct FlagRegister {
-    // did the last op produce 0?
-    pub zero: bool;
-    // was the last op subtraction?
-    pub sub: bool;
-    // did the lower byte overflow?
-    pub half_carry: bool;
-    // did the whole thing overflow?
-    pub carry: bool;
 
-    pub flags: u8;
-}
-*/
 
 struct Registers {
     pub a: u8,
@@ -187,15 +174,60 @@ mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
-    #[test]
-    fn test_sets() {
-        assert_eq!(add(1, 2), 3);
+    fn create_registers() -> Registers {
+        let mut r = Registers::new();
+
+        r.a = 0x10;
+        r.b = 0x20;
+        r.c = 0x30;
+        r.d = 0x40;
+        r.e = 0x50;
+        r.f = 0x60;
+        r.h = 0x70;
+        r.l = 0x80;
+        r.pc = 0x0100;
+        r.sp = 0xE000;
+
+        return r;
     }
 
     #[test]
-    fn test_gets() {
-        // This assert would fire and test will fail.
-        // Please note, that private functions can be tested too!
-        assert_eq!(bad_add(1, 2), 3);
+    fn test_get_16bit() {
+        let mut r = create_registers();
+
+        assert_eq!(((r.a as u16) << 8) | (r.f as u16), r.get_af());
+        assert_eq!(((r.b as u16) << 8) | (r.c as u16), r.get_bc());
+        assert_eq!(((r.d as u16) << 8) | (r.e as u16), r.get_de());
+        assert_eq!(((r.h as u16) << 8) | (r.l as u16), r.get_hl());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_get_8bit() {
+        //assert_eq!(add(1, 2), 3);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_set_16bit() {
+        //assert_eq!(add(1, 2), 3);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_set_8bit() {
+        //assert_eq!(add(1, 2), 3);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_get_flags() {
+
+    }
+
+    #[test]
+    #[ignore]
+    fn test_set_flags() {
+
     }
 }
