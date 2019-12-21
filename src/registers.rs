@@ -1,5 +1,5 @@
 
-
+/// A set of registers
 pub struct Registers {
     a: u8,
     f: u8,
@@ -19,6 +19,7 @@ const HALF_CARRY_FLAG: u8 = 0b0010_0000;
 const CARRY_FLAG: u8 = 0b0001_0000;
 
 impl Registers {
+    /// Create a new Register struct with default SP and PC
     pub fn new() -> Registers {
         Registers {
             a: 0,
@@ -32,6 +33,20 @@ impl Registers {
             sp: 0xfffe, // default for SP, but should not be relied upon.
             pc: 0x100, // All GB programs start at 0x100
         }
+    }
+
+    /// Print the contents of all registers to stdout
+    pub fn print_registers(&self) {
+        println!("a: 0x{:X?}", self.a);
+        println!("f: 0x{:X?}", self.f);
+        println!("b: 0x{:X?}", self.b);
+        println!("c: 0x{:X?}", self.c);
+        println!("d: 0x{:X?}", self.d);
+        println!("e: 0x{:X?}", self.e);
+        println!("h: 0x{:X?}", self.h);
+        println!("l: 0x{:X?}", self.l);
+        println!("sp: 0x{:X?}", self.sp);
+        println!("pc: 0x{:X?}", self.pc);
     }
 
     ///////////////////////////////////////////////////////////////////////////
