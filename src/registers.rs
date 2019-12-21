@@ -72,6 +72,14 @@ impl Registers {
         self.l = (value & 0x00FF) as u8;
     }
 
+    pub fn set_pc(&mut self, value: u16) {
+        self.pc = value;
+    }
+
+    pub fn set_sp(&mut self, value: u16) {
+        self.sp = value;
+    }
+
     pub fn get_af(&self) -> u16 {
         ((self.a as u16) << 8) | (self.f as u16)
     }
@@ -88,6 +96,13 @@ impl Registers {
         ((self.h as u16) << 8) | (self.l as u16)
     }
 
+    pub fn get_pc(&self) -> u16 {
+        self.pc
+    }
+
+    pub fn get_sp(&self) -> u16 {
+        self.sp
+    }
     ///////////////////////////////////////////////////////////////////////////
     // Get and set individual registers
     ///////////////////////////////////////////////////////////////////////////

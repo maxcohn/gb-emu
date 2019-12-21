@@ -1,5 +1,6 @@
 mod registers;
 mod memory;
+mod cpu;
 use registers::Registers;
 
 
