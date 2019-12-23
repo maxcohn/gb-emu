@@ -1,11 +1,17 @@
 mod registers;
 mod memory;
 mod cpu;
+mod cartridge;
+
 use registers::Registers;
+use memory::Memory;
+use cpu::CPU;
+use cartridge::Cartridge;
 
 
 fn main() {
-    let registers = registers::Registers::new();
-    registers.print_registers();
-    println!("Hello, world!");
+    //let cpu = cpu::CPU::new();
+    let cart = Cartridge::new("test_roms/tetris.gb");
+
+    println!("{:X?}", cart.read(0x50));
 }
