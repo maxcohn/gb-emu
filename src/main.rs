@@ -8,10 +8,21 @@ use memory::Memory;
 use cpu::CPU;
 use cartridge::Cartridge;
 
+use std::fs::File;
+use std::io::Read;
 
 fn main() {
-    //let cpu = cpu::CPU::new();
-    let cart = Cartridge::new("test_roms/tetris.gb");
 
-    println!("{:X?}", cart.read(0x50));
+    // read rom into vec<u8>
+    let mut file = File::open("test_roms/tetris.gb").expect("Failed to open ROM file");
+    let mut data = Vec::new();
+    file.read_to_end(&mut data).expect("Failed to read data ROM file.");
+
+    // move rom data to memory unit
+    let mut memory = Memory::new();
+    for (i, b) in data.iter().enumerate() {
+        memory.write(i as u16, *b);
+    }
+
+    println!("{:X?}", memory.read(0x120));
 }

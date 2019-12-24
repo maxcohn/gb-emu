@@ -14,12 +14,11 @@
     FF80-FFFE   High RAM (HRAM)
     FFFF        Interrupt Enable Register
 */
+
 use crate::cartridge::Cartridge;
 
 pub struct Memory {
     mem: [u8; 0xFFFF],
-
-
     /*
     cartridge: Cartridge,
     vram: VRAM,
@@ -42,13 +41,13 @@ impl Memory {
     pub fn read(&self, addr: u16) -> u8 {
         if addr >= 0xE000 && addr <= 0xFDFF {
             // E000-FDFF   Same as C000-DDFF (ECHO)    (typically not used)
-            self.mem[addr - 0x2000]
+            self.mem[(addr - 0x2000) as usize]
         } else if addr >= 0xFEA0 && addr <= 0xFEFF {
             // FEA0-FEFF   Not Usable
             panic!("Attempt to access unusable memory location: {}", addr);
         } else {
             // otherwise, we can read from actual address without worry
-            self.mem[addr]
+            self.mem[addr as usize]
         }
     }
 

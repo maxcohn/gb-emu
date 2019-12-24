@@ -1,8 +1,5 @@
-Order of code to write:
-
-Registers
-
-CPU
-    Instruction by instruction
-
-    
+After getting tetris working:
+    Abstract cartridge to allow for memory bank
+        struct Cartridge {
+            banks: Vec<CartBank>
+        }
