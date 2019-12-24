@@ -24,5 +24,7 @@ fn main() {
         memory.write(i as u16, *b);
     }
 
-    println!("{:X?}", memory.read(0x120));
+    let mut cpu = CPU::new(memory);
+
+    println!("{:X?}", cpu.next_instruction());
 }
