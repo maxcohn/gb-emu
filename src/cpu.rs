@@ -173,10 +173,40 @@ impl CPU {
                 let v = self.registers.get_bc();
                 self.memory.write(v, self.registers.get_a());
             },
+            // LD B,n
+            0x06 => {
+                let v = self.memory.read(cur_pc + 1);
+                self.registers.set_b(v);
+            },
+            // LD C,n
+            0x0E => {
+                let v = self.memory.read(cur_pc + 1);
+                self.registers.set_c(v);
+            },
             // LD (DE),A
             0x12 => {
                 let v = self.registers.get_de();
                 self.memory.write(v, self.registers.get_a());
+            },
+            // LD D,n
+            0x16 => {
+                let v = self.memory.read(cur_pc + 1);
+                self.registers.set_d(v);
+            },
+            // LD E,n
+            0x1E => {
+                let v = self.memory.read(cur_pc + 1);
+                self.registers.set_e(v);
+            },
+            // LD H,n
+            0x26 => {
+                let v = self.memory.read(cur_pc + 1);
+                self.registers.set_h(v);
+            },
+            // LD L,n
+            0x2E => {
+                let v = self.memory.read(cur_pc + 1);
+                self.registers.set_l(v);
             },
             // LD B,A
             0x47 => self.registers.set_b(self.registers.get_a()),
