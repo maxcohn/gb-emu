@@ -125,9 +125,10 @@ const CB_MNEMONICS: [&str; 0x100] = [
 ];
 
 /// CPU and it's components: registers
+//TODO remove `pub` after done testing
 pub struct CPU {
-    registers: Registers,
-    memory: Memory,
+    pub registers: Registers,
+    pub memory: Memory,
 }
 
 impl CPU {
@@ -141,14 +142,73 @@ impl CPU {
 
     pub fn next_instruction(&mut self) -> u8{
         let cur_pc = self.registers.get_pc();
-        let cur_op = self.memory.read(cur_pc + 1);
+        let cur_op = self.memory.read(cur_pc);
 
-        println!("{:X?}", cur_pc);
-        println!("{:X?}", cur_op);
+        println!("Addr:{:X?}", cur_pc);
+        //println!("{:X?}", cur_op);
+        println!("{:?}", OP_MNEMONICS[cur_op as usize]);
+        println!("Cycles: {:?}", OP_CYCLES[cur_op as usize]);
+        println!("Length: {:?}", OP_LENGTHS[cur_op as usize]);
+        println!();
+        self.exec();
+        self.registers.set_pc(cur_pc + OP_LENGTHS[cur_op as usize] as u16);
+
         cur_op
     }
 
-    pub fn execute_instr(&mut self) {
+    pub fn exec(&mut self) {
+        let cur_pc = self.registers.get_pc();
+        let cur_op = self.memory.read(cur_pc);
+
+        match cur_op {
+            // NOP
+            0x00 => {},
+            // LD BC,d16
+            0x01 => {
+                let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
+                self.registers.set_bc(v);
+            },
+            // LD (BC),A (register in parenthesis means store at memory location)
+            0x02 => {
+                let v = self.registers.get_bc();
+                self.memory.write(v, self.registers.get_a());
+            },
+            // LD (DE),A
+            0x12 => {
+                let v = self.registers.get_de();
+                self.memory.write(v, self.registers.get_a());
+            },
+            // LD B,A
+            0x47 => self.registers.set_b(self.registers.get_a()),
+            // LD C,A
+            0x4F => self.registers.set_c(self.registers.get_a()),
+            // LD D,A
+            0x57 => self.registers.set_d(self.registers.get_a()),
+            // LD E,A
+            0x5F => self.registers.set_e(self.registers.get_a()),
+            // LD H,A
+            0x67 => self.registers.set_h(self.registers.get_a()),
+            // LD L,A
+            0x6F => self.registers.set_l(self.registers.get_a()),
+            // LD (HL),A
+            0x77 => {
+                let v = self.registers.get_hl();
+                self.memory.write(v, self.registers.get_a());
+            }
+            // LD A,A (doesn't seem necessary, but ok)
+            0x7F => self.registers.set_a(self.registers.get_a()),
+
+            // LD (nn),A
+            0xEA => {
+                let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
+                self.memory.write(v, self.registers.get_a());
+            }
+
+            _ => panic!("Unimplemented opcode: {:X?}", cur_op)
+        }
+
+        let cycles_passed = OP_CYCLES[cur_op as usize];
+
 
     }
 }
