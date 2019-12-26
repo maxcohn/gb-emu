@@ -1,3 +1,4 @@
+import re
 
 rest = None
 with open('src/cpu.rs') as f:
@@ -5,8 +6,14 @@ with open('src/cpu.rs') as f:
 		if line.strip().startswith('match cur_op'):
 			break
 	
-	rest = f.readlines()
+	rest = ''.join(f.readlines())
 
+RE_HEX = re.compile(r'0x[0-9A-F][0-9A-F]')
+
+implemented_codes = []
+for m in RE_HEX.finditer(rest):
+	implemented_codes.append(int(m.group(0), base=16))
+'''
 implemented_codes = []
 for line in rest:
 	if not line.strip().startswith('0x'):
@@ -24,7 +31,7 @@ implemented_codes = list(dict.fromkeys(implemented_codes))
 implemented_codes.sort()
 
 
-
+'''
 count = 0
 for i in range(256):
 	if i not in implemented_codes:

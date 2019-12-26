@@ -128,9 +128,22 @@ const CB_MNEMONICS: [&str; 0x100] = [
 fn half_carry_add(a: u8, b: u8) -> bool {
     (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10
 }
-//TODO implement 16bit half carry
 
-/// CPU and it's components: registers
+/// Checks if the addition of two numbers results in a carry
+fn carry_add(a: u8, b: u8) -> bool {
+    a > (0xffff - b)
+}
+
+//TODO half_carry_sub
+
+//TODO refactor to put all variant of an op into a single match arm, as opposed to
+//TODO multiple, how it is now
+
+//TODO replace all standard addition and subtraction with wrapping versions
+
+
+
+/// CPU and it's components: registers, memory
 //TODO remove `pub` after done testing
 pub struct CPU {
     pub registers: Registers,
@@ -218,6 +231,25 @@ impl CPU {
             0x08 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
                 self.registers.set_sp(v);
+            },
+            // ADD HL,n
+            0x09 | 0x19 | 0x29 | 0x39 => {
+                let v = match cur_op {
+                    0x09 => self.registers.get_bc(),
+                    0x19 => self.registers.get_de(),
+                    0x29 => self.registers.get_hl(),
+                    0x39 => self.registers.get_sp(),
+                    _ => panic!("Opcode '{:X?}' in ADD HL,n match arm", cur_op),
+                };
+                let hl = self.registers.get_hl();
+                let res = hl.wrapping_add(v);
+                self.registers.set_hl(res);
+
+                self.registers.set_flag_sub(0);
+                // check for half carry in upper byte
+                self.registers.set_flag_half_carry(half_carry_add(((v & 0xFF00) >> 8) as u8, ((hl & 0xFF00) >> 8) as u8) as u8);
+                // check for carry in upper byte
+                self.registers.set_flag_carry(carry_add(((hl & 0xFF00) >> 8) as u8, ((v & 0xFF00) >> 8) as u8) as u8);
             },
             // DEC BC
             0x0B => self.registers.set_bc(self.registers.get_bc() - 1),
