@@ -390,6 +390,30 @@ impl CPU {
             },
             // LD A,A (doesn't seem necessary, but ok)
             0x7F => self.registers.set_a(self.registers.get_a()),
+            // AND n
+            0xA0..0xA7 => {
+                let v = match cur_op {
+                    0xA0 => self.registers.get_b(),
+                    0xA1 => self.registers.get_c(),
+                    0xA2 => self.registers.get_d(),
+                    0xA3 => self.registers.get_e(),
+                    0xA4 => self.registers.get_h(),
+                    0xA5 => self.registers.get_l(),
+                    0xA6 => self.memory.read(self.registers.get_hl()),
+                    0xA7 => self.registers.get_a(),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0xA0..0xA7 but was not", cur_op),
+                };
+                // AND the wanted register with A
+                let res = v & self.registers.get_a();
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero( (res == 0) as u8);
+                self.registers.set_flag_carry(0);
+                self.registers.set_flag_half_carry(1);
+                self.registers.set_flag_sub(0);
+
+            },
             // XOR n
             0xA8..0xAF => {
                 // get value store within wanted register
@@ -406,6 +430,30 @@ impl CPU {
                 };
                 // XOR the wanted register with A
                 let res = v ^ self.registers.get_a();
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero( (res == 0) as u8);
+                self.registers.set_flag_carry(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+            }
+            // OR n
+            0xB0..0xB7 => {
+                let v = match cur_op {
+                    0xB0 => self.registers.get_b(),
+                    0xB1 => self.registers.get_c(),
+                    0xB2 => self.registers.get_d(),
+                    0xB3 => self.registers.get_e(),
+                    0xB4 => self.registers.get_h(),
+                    0xB5 => self.registers.get_l(),
+                    0xB6 => self.memory.read(self.registers.get_hl()),
+                    0xB7 => self.registers.get_a(),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0xB0..0xB7 but was not", cur_op),
+                };
+                // OR the wanted register with A
+                let res = v | self.registers.get_a();
+                self.registers.set_a(res);
 
                 // set flags
                 self.registers.set_flag_zero( (res == 0) as u8);
@@ -484,6 +532,19 @@ impl CPU {
                 // decrement stack
                 self.registers.set_sp(cur_sp - 2);
             },
+            // AND d8
+            0xE6 => {
+                let imm = self.memory.read(cur_pc + 1);
+                // AND the immediate value with register A
+                let res = self.registers.get_a() & imm;
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero( (res == 0) as u8);
+                self.registers.set_flag_carry(0);
+                self.registers.set_flag_half_carry(1);
+                self.registers.set_flag_sub(0);
+            }
             // LD (nn),A
             0xEA => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -494,6 +555,7 @@ impl CPU {
                 let imm = self.memory.read(cur_pc + 1);
                 // XOR the immediate value with register A
                 let res = self.registers.get_a() ^ imm;
+                self.registers.set_a(res);
 
                 // set flags
                 self.registers.set_flag_zero( (res == 0) as u8);
@@ -533,6 +595,19 @@ impl CPU {
                 // decrement stack
                 self.registers.set_sp(cur_sp - 2);
             },
+            // OR d8
+            0xF6 => {
+                let imm = self.memory.read(cur_pc + 1);
+                // OR the immediate value with register A
+                let res = self.registers.get_a() | imm;
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero( (res == 0) as u8);
+                self.registers.set_flag_carry(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+            }
             // LD SP,HL
             0xF9 => self.registers.set_sp(self.registers.get_hl()),
 
