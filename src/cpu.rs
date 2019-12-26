@@ -124,6 +124,12 @@ const CB_MNEMONICS: [&str; 0x100] = [
     "SET 6,B", "SET 6,C", "SET 6,D", "SET 6,E", "SET 6,H", "SET 6,L", "SET 6,(HL)", "SET 6,A", "SET 7,B", "SET 7,C", "SET 7,D", "SET 7,E", "SET 7,H", "SET 7,L", "SET 7,(HL)", "SET 7,A",
 ];
 
+/// Checks if the addition of two number results in a half carry
+fn half_carry_add(a: u8, b: u8) -> bool {
+    (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10
+}
+//TODO implement 16bit half carry
+
 /// CPU and it's components: registers
 //TODO remove `pub` after done testing
 pub struct CPU {
@@ -173,6 +179,36 @@ impl CPU {
                 let v = self.registers.get_bc();
                 self.memory.write(v, self.registers.get_a());
             },
+            // INC BC
+            0x03 => self.registers.set_bc(self.registers.get_bc() + 1),
+            // INC B
+            0x04 => {
+                // get original value and then calculate new value
+                let v = self.registers.get_b();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_b(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC B
+            0x05 => {
+                // get original value and then calculate new value
+                let v = self.registers.get_b();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_b(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
             // LD B,n
             0x06 => {
                 let v = self.memory.read(cur_pc + 1);
@@ -182,6 +218,36 @@ impl CPU {
             0x08 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
                 self.registers.set_sp(v);
+            },
+            // DEC BC
+            0x0B => self.registers.set_bc(self.registers.get_bc() - 1),
+            // INC C
+            0x0C => {
+                // get original value and then calculate new value
+                let v = self.registers.get_c();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_c(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC C
+            0x0D => {
+                // get original value and then calculate new value
+                let v = self.registers.get_c();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_c(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
             },
             // LD C,n
             0x0E => {
@@ -198,10 +264,70 @@ impl CPU {
                 let v = self.registers.get_de();
                 self.memory.write(v, self.registers.get_a());
             },
+            // INC DE
+            0x13 => self.registers.set_de(self.registers.get_de() + 1),
+            // INC D
+            0x14 => {
+                // get original value and then calculate new value
+                let v = self.registers.get_d();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_d(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC D
+            0x15 => {
+                // get original value and then calculate new value
+                let v = self.registers.get_d();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_d(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
             // LD D,n
             0x16 => {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_d(v);
+            },
+            // DEC DE
+            0x1B => self.registers.set_de(self.registers.get_de() - 1),
+            // INC E
+            0x1C => {
+                // get original value and then calculate new value
+                let v = self.registers.get_e();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_e(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC E
+            0x1D => {
+                // get original value and then calculate new value
+                let v = self.registers.get_e();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_e(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
             },
             // LD E,n
             0x1E => {
@@ -219,6 +345,36 @@ impl CPU {
                 self.memory.write(self.registers.get_hl(), self.registers.get_a());
                 self.registers.set_hl(self.registers.get_hl() + 1);
             },
+            // INC HL
+            0x23 => self.registers.set_hl(self.registers.get_hl() + 1),
+            // INC H
+            0x24 => {
+                // get original value and then calculate new value
+                let v = self.registers.get_h();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_h(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC H
+            0x25 => {
+                // get original value and then calculate new value
+                let v = self.registers.get_h();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_h(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
             // LD H,n
             0x26 => {
                 let v = self.memory.read(cur_pc + 1);
@@ -230,6 +386,36 @@ impl CPU {
                 let v = self.memory.read(self.registers.get_hl());
                 self.registers.set_a(v);
                 self.registers.set_hl(self.registers.get_hl() + 1);
+            },
+            // DEC HL
+            0x2B => self.registers.set_hl(self.registers.get_hl() - 1),
+            // INC L
+            0x2C => {
+                // get original value and then calculate new value
+                let v = self.registers.get_l();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_l(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC L
+            0x2D => {
+                // get original value and then calculate new value
+                let v = self.registers.get_l();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_l(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
             },
             // LD L,n
             0x2E => {
@@ -247,6 +433,36 @@ impl CPU {
                 self.memory.write(self.registers.get_hl(), self.registers.get_a());
                 self.registers.set_hl(self.registers.get_hl() - 1);
             },
+            // INC SP
+            0x33 => self.registers.set_sp(self.registers.get_sp() + 1),
+            // INC (HL)
+            0x34 => {
+                // get original value and then calculate new value
+                let v = self.memory.read(self.registers.get_hl());
+                let res = v + 1;
+
+                // set register to incremented version
+                self.memory.write(self.registers.get_hl(), res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC (HL)
+            0x35 => {
+                // get original value and then calculate new value
+                let v = self.memory.read(self.registers.get_hl());
+                let res = v - 1;
+
+                // set register to incremented version
+                self.memory.write(self.registers.get_hl(), res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
             // LD (HL),n
             0x36 => {
                 let imm = self.memory.read(cur_pc + 1);
@@ -258,6 +474,36 @@ impl CPU {
                 let v = self.memory.read(self.registers.get_hl());
                 self.registers.set_a(v);
                 self.registers.set_hl(self.registers.get_hl() - 1);
+            },
+            // DEC sp
+            0x3B => self.registers.set_sp(self.registers.get_sp() - 1),
+            // INC A
+            0x3C => {
+                // get original value and then calculate new value
+                let v = self.registers.get_a();
+                let res = v + 1;
+
+                // set register to incremented version
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // DEC A
+            0x3D => {
+                // get original value and then calculate new value
+                let v = self.registers.get_a();
+                let res = v - 1;
+
+                // set register to incremented version
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_zero((res == 0) as u8);
             },
             // LD B,n
             0x40..0x46 => {
