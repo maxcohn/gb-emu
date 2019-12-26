@@ -131,12 +131,12 @@ fn half_carry_add(a: u8, b: u8) -> bool {
 
 /// Checks if the addition of two numbers results in a carry
 fn carry_add(a: u8, b: u8) -> bool {
-    a > (0xffff - b)
+    a > (0xff - b)
 }
 
 //TODO half_carry_sub
 
-//TODO refactor to put all variant of an op into a single match arm, as opposed to
+//TODO refactor to put all variants of an op into a single match arm, as opposed to
 //TODO multiple, how it is now
 
 //TODO replace all standard addition and subtraction with wrapping versions
@@ -194,14 +194,34 @@ impl CPU {
             },
             // INC BC
             0x03 => self.registers.set_bc(self.registers.get_bc() + 1),
-            // INC B
-            0x04 => {
+            // INC n
+            0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
                 // get original value and then calculate new value
-                let v = self.registers.get_b();
+                let v = match cur_op {
+                    0x04 => self.registers.get_b(),
+                    0x0C => self.registers.get_c(),
+                    0x14 => self.registers.get_d(),
+                    0x1C => self.registers.get_e(),
+                    0x24 => self.registers.get_h(),
+                    0x2C => self.registers.get_l(),
+                    0x34 => self.memory.read(self.registers.get_hl()),
+                    0x3C => self.registers.get_a(),
+                    _ => panic!("Opcode '{:X?}' in INC n match arm", cur_op),
+                };
                 let res = v + 1;
 
                 // set register to incremented version
-                self.registers.set_b(res);
+                match cur_op {
+                    0x04 => self.registers.set_b(v),
+                    0x0C => self.registers.set_c(v),
+                    0x14 => self.registers.set_d(v),
+                    0x1C => self.registers.set_e(v),
+                    0x24 => self.registers.set_h(v),
+                    0x2C => self.registers.set_l(v),
+                    0x34 => self.memory.write(self.registers.get_hl(), v),
+                    0x3C => self.registers.set_a(v),
+                    _ => panic!("Opcode '{:X?}' in INC n match arm", cur_op),
+                }
 
                 // set flags
                 self.registers.set_flag_sub(0);
@@ -253,20 +273,6 @@ impl CPU {
             },
             // DEC BC
             0x0B => self.registers.set_bc(self.registers.get_bc() - 1),
-            // INC C
-            0x0C => {
-                // get original value and then calculate new value
-                let v = self.registers.get_c();
-                let res = v + 1;
-
-                // set register to incremented version
-                self.registers.set_c(res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC C
             0x0D => {
                 // get original value and then calculate new value
@@ -298,20 +304,6 @@ impl CPU {
             },
             // INC DE
             0x13 => self.registers.set_de(self.registers.get_de() + 1),
-            // INC D
-            0x14 => {
-                // get original value and then calculate new value
-                let v = self.registers.get_d();
-                let res = v + 1;
-
-                // set register to incremented version
-                self.registers.set_d(res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC D
             0x15 => {
                 // get original value and then calculate new value
@@ -333,20 +325,6 @@ impl CPU {
             },
             // DEC DE
             0x1B => self.registers.set_de(self.registers.get_de() - 1),
-            // INC E
-            0x1C => {
-                // get original value and then calculate new value
-                let v = self.registers.get_e();
-                let res = v + 1;
-
-                // set register to incremented version
-                self.registers.set_e(res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC E
             0x1D => {
                 // get original value and then calculate new value
@@ -379,20 +357,6 @@ impl CPU {
             },
             // INC HL
             0x23 => self.registers.set_hl(self.registers.get_hl() + 1),
-            // INC H
-            0x24 => {
-                // get original value and then calculate new value
-                let v = self.registers.get_h();
-                let res = v + 1;
-
-                // set register to incremented version
-                self.registers.set_h(res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC H
             0x25 => {
                 // get original value and then calculate new value
@@ -421,20 +385,6 @@ impl CPU {
             },
             // DEC HL
             0x2B => self.registers.set_hl(self.registers.get_hl() - 1),
-            // INC L
-            0x2C => {
-                // get original value and then calculate new value
-                let v = self.registers.get_l();
-                let res = v + 1;
-
-                // set register to incremented version
-                self.registers.set_l(res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC L
             0x2D => {
                 // get original value and then calculate new value
@@ -467,20 +417,6 @@ impl CPU {
             },
             // INC SP
             0x33 => self.registers.set_sp(self.registers.get_sp() + 1),
-            // INC (HL)
-            0x34 => {
-                // get original value and then calculate new value
-                let v = self.memory.read(self.registers.get_hl());
-                let res = v + 1;
-
-                // set register to incremented version
-                self.memory.write(self.registers.get_hl(), res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC (HL)
             0x35 => {
                 // get original value and then calculate new value
@@ -509,20 +445,6 @@ impl CPU {
             },
             // DEC sp
             0x3B => self.registers.set_sp(self.registers.get_sp() - 1),
-            // INC A
-            0x3C => {
-                // get original value and then calculate new value
-                let v = self.registers.get_a();
-                let res = v + 1;
-
-                // set register to incremented version
-                self.registers.set_a(res);
-
-                // set flags
-                self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // DEC A
             0x3D => {
                 // get original value and then calculate new value
@@ -668,6 +590,51 @@ impl CPU {
             },
             // LD A,A (doesn't seem necessary, but ok)
             0x7F => self.registers.set_a(self.registers.get_a()),
+            // ADC A,n
+            0x88..0x8F | 0xCE => {
+                let v = match cur_op {
+                    0x88 => self.registers.get_b(),
+                    0x89 => self.registers.get_c(),
+                    0x8A => self.registers.get_d(),
+                    0x8B => self.registers.get_e(),
+                    0x8C => self.registers.get_h(),
+                    0x8D => self.registers.get_l(),
+                    0x8E => self.memory.read(self.registers.get_hl()),
+                    0x8F => self.registers.get_a(),
+                    0xCE => self.memory.read(cur_pc + 1),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x88..0x8F and 0xCE but was not", cur_op),
+                };
+                let a = self.registers.get_a();
+                let carry = self.registers.get_flag_carry();
+                let res = a.wrapping_add(v.wrapping_add(carry));
+
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero((res == 0) as u8);
+                // not using the carry_add function because we need 3 variables
+                self.registers.set_flag_carry((a as u16 + carry as u16 + v as u16 > 0xFF) as u8);
+                // not using the half_carry_add function because we need three variables here
+                self.registers.set_flag_half_carry(((a & 0x0F) + (carry & 0x0F) + (v & 0x0F) > 0x0F) as u8);
+                self.registers.set_flag_sub(0);
+            },
+            // SUB,n
+            0x90..0x97 | 0xD6 => {
+                let v = match cur_op {
+                    0x90 => self.registers.get_b(),
+                    0x91 => self.registers.get_c(),
+                    0x92 => self.registers.get_d(),
+                    0x93 => self.registers.get_e(),
+                    0x94 => self.registers.get_h(),
+                    0x95 => self.registers.get_l(),
+                    0x96 => self.memory.read(self.registers.get_hl()),
+                    0x97 => self.registers.get_a(),
+                    0xD6 => self.memory.read(cur_pc + 1),
+                    _ => panic!("Opcode: '{:X?}' got into inner match arm, not supposed to happen", cur_op),
+                };
+                let a = self.registers.get_a();
+                //TODO finish implementing
+            },
             // AND n
             0xA0..0xA7 => {
                 let v = match cur_op {
@@ -822,7 +789,18 @@ impl CPU {
                 self.registers.set_flag_carry(0);
                 self.registers.set_flag_half_carry(1);
                 self.registers.set_flag_sub(0);
-            }
+            },
+            // ADD SP,d8
+            0xE8 => {
+                let imm = self.memory.read(cur_pc + 1);
+                let sp = self.registers.get_sp();
+
+                // looks like carries are performed on lower bytes here
+                self.registers.set_flag_half_carry(half_carry_add((sp & 0xFF) as u8, imm) as u8);
+                self.registers.set_flag_carry(carry_add((sp & 0xFF) as u8, imm) as u8);
+                self.registers.set_flag_zero(0);
+                self.registers.set_flag_sub(0);
+            },
             // LD (nn),A
             0xEA => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -894,6 +872,20 @@ impl CPU {
 
         let cycles_passed = OP_CYCLES[cur_op as usize];
 
+
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn before_each() {
+        let cpu = CPU::new(Memory::new());
+    }
+
+    #[test]
+    fn lexer_test1() {
 
     }
 }
