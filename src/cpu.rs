@@ -178,10 +178,20 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_b(v);
             },
+            // LD (nn),SP
+            0x08 => {
+                let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
+                self.registers.set_sp(v);
+            },
             // LD C,n
             0x0E => {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_c(v);
+            },
+            // LD DE,nn
+            0x11 => {
+                let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
+                self.registers.set_de(v);
             },
             // LD (DE),A
             0x12 => {
@@ -198,41 +208,333 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_e(v);
             },
+            // LD HL,nn
+            0x21 => {
+                let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
+                self.registers.set_HL(v);
+            },
+            // LDI (HL),A - LD (HL+),A - LD (HLI),A
+            0x22 => {
+                // store A into addr HL, increment HL
+                self.memory.write(self.registers.get_hl(), self.registers.get_a());
+                self.registers.set_hl(self.registers.get_hl() + 1);
+            },
             // LD H,n
             0x26 => {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_h(v);
+            },
+            // LDI A,(HL) - LD A,(HL+) - LD A,(HLI)
+            0x2A => {
+                // put value at addr HL into A, increment HL
+                let v = self.memory.read(self.registers.get_hl());
+                self.registers.set_a(v);
+                self.registers.set_hl(self.registers.get_hl() + 1);
             },
             // LD L,n
             0x2E => {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_l(v);
             },
+            // LD SP,nn
+            0x31 => {
+                let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
+                self.registers.set_sp(v);
+            }
+            // LDD (HL),A - LD (HL-),A - LD (HLD),A
+            0x32 => {
+                // put A into address HL, decrement HL
+                self.memory.write(self.registers.get_hl(), self.registers.get_a());
+                self.registers.set_hl(self.registers.get_hl() - 1);
+            },
+            // LD (HL),n
+            0x36 => {
+                let imm = self.memory.read(cur_pc + 1);
+                self.memory.write(self.registers.get_hl(), imm);
+            }
+            // LDD A,(HL) - LD A,(HL-) - LD A,(HLD)
+            0x3A => {
+                // store value at address HL into A, decrement HL
+                let v = self.memory.read(self.registers.get_hl());
+                self.registers.set_a(v);
+                self.registers.set_hl(self.registers.get_hl() - 1);
+            },
+            // LD B,n
+            0x40..0x46 => {
+                let v = match cur_op {
+                    0x40 => self.registers.get_b(),
+                    0x41 => self.registers.get_c(),
+                    0x42 => self.registers.get_d(),
+                    0x43 => self.registers.get_e(),
+                    0x44 => self.registers.get_h(),
+                    0x45 => self.registers.get_l(),
+                    0x46 => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x40..0x46 but was not", cur_op),
+                };
+                self.registers.set_b(v);
+            },
             // LD B,A
             0x47 => self.registers.set_b(self.registers.get_a()),
+            // LD C,n
+            0x48..0x4E => {
+                let v = match cur_op {
+                    0x48 => self.registers.get_b(),
+                    0x49 => self.registers.get_c(),
+                    0x4A => self.registers.get_d(),
+                    0x4B => self.registers.get_e(),
+                    0x4C => self.registers.get_h(),
+                    0x4D => self.registers.get_l(),
+                    0x4E => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x48..0x4E but was not", cur_op),
+                };
+                self.registers.set_c(v);
+            },
             // LD C,A
             0x4F => self.registers.set_c(self.registers.get_a()),
+            // LD D,n
+            0x50..0x56 => {
+                let v = match cur_op {
+                    0x50 => self.registers.get_b(),
+                    0x51 => self.registers.get_c(),
+                    0x52 => self.registers.get_d(),
+                    0x53 => self.registers.get_e(),
+                    0x54 => self.registers.get_h(),
+                    0x55 => self.registers.get_l(),
+                    0x56 => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x50..0x56 but was not", cur_op),
+                };
+                self.registers.set_d(v);
+            },
             // LD D,A
             0x57 => self.registers.set_d(self.registers.get_a()),
+            // LD E,n
+            0x58..0x5E => {
+                let v = match cur_op {
+                    0x58 => self.registers.get_b(),
+                    0x59 => self.registers.get_c(),
+                    0x5A => self.registers.get_d(),
+                    0x5B => self.registers.get_e(),
+                    0x5C => self.registers.get_h(),
+                    0x5D => self.registers.get_l(),
+                    0x5E => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x58..0x5E but was not", cur_op),
+                };
+                self.registers.set_e(v);
+            },
             // LD E,A
             0x5F => self.registers.set_e(self.registers.get_a()),
+            // LD H,n
+            0x60..0x66 => {
+                let v = match cur_op {
+                    0x60 => self.registers.get_b(),
+                    0x61 => self.registers.get_c(),
+                    0x62 => self.registers.get_d(),
+                    0x63 => self.registers.get_e(),
+                    0x64 => self.registers.get_h(),
+                    0x65 => self.registers.get_l(),
+                    0x66 => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x60..0x46 but was not", cur_op),
+                };
+                self.registers.set_h(v);
+            },
             // LD H,A
             0x67 => self.registers.set_h(self.registers.get_a()),
+            // LD L,n
+            0x68..0x6E => {
+                let v = match cur_op {
+                    0x68 => self.registers.get_b(),
+                    0x69 => self.registers.get_c(),
+                    0x6A => self.registers.get_d(),
+                    0x6B => self.registers.get_e(),
+                    0x6C => self.registers.get_h(),
+                    0x6D => self.registers.get_l(),
+                    0x6E => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x68..0x6E but was not", cur_op),
+                };
+                self.registers.set_l(v);
+            },
             // LD L,A
             0x6F => self.registers.set_l(self.registers.get_a()),
+            // LD (HL),n
+            0x70..0x75 => {
+                let v = match cur_op {
+                    0x70 => self.registers.get_b(),
+                    0x71 => self.registers.get_c(),
+                    0x72 => self.registers.get_d(),
+                    0x73 => self.registers.get_e(),
+                    0x74 => self.registers.get_h(),
+                    0x75 => self.registers.get_l(),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x60..0x46 but was not", cur_op),
+                };
+                self.memory.write(self.registers.get_hl(), v);
+            }
             // LD (HL),A
             0x77 => {
                 let v = self.registers.get_hl();
                 self.memory.write(v, self.registers.get_a());
             }
+            // LD A,n
+            0x78..0x7F => {
+                let v = match cur_op {
+                    0x78 => self.registers.get_b(),
+                    0x79 => self.registers.get_c(),
+                    0x7A => self.registers.get_d(),
+                    0x7B => self.registers.get_e(),
+                    0x7C => self.registers.get_h(),
+                    0x7D => self.registers.get_l(),
+                    0x7E => self.memory.read(self.registers.get_hl()),
+                    0x7F => self.registers.get_a(),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x78..0x7F but was not", cur_op),
+                };
+                self.registers.set_a(v);
+            },
             // LD A,A (doesn't seem necessary, but ok)
             0x7F => self.registers.set_a(self.registers.get_a()),
+            // XOR n
+            0xA8..0xAF => {
+                // get value store within wanted register
+                let v = match cur_op {
+                    0xAF => self.registers.get_a(),
+                    0xA8 => self.registers.get_b(),
+                    0xA9 => self.registers.get_c(),
+                    0xAA => self.registers.get_d(),
+                    0xAB => self.registers.get_e(),
+                    0xAC => self.registers.get_h(),
+                    0xAD => self.registers.get_l(),
+                    0xAE => self.memory.read(self.registers.get_hl()),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0xA8..0xAF but was not", cur_op),
+                };
+                // XOR the wanted register with A
+                let res = v ^ self.registers.get_a();
 
+                // set flags
+                self.registers.set_flag_zero( (res == 0) as u8);
+                self.registers.set_flag_carry(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+            }
+            // POP BC
+            0xC1 => {
+                let cur_sp = self.registers.get_sp();
+                let high = self.memory.read(cur_sp);
+                let low = self.memory.read(cur_sp + 1);
+                self.registers.set_bc( ((high as u16) << 8) | (low as u16) );
+                self.registers.set_sp(cur_sp + 2);
+            },
+            // PUSH BC
+            0xC5 => {
+                // push register pair onto stack, decrement stack by 2
+                let cur_sp = self.registers.get_sp();
+
+                // write upper byte to stack
+                self.memory.write(cur_sp, self.registers.get_b());
+                // write lower byte to stack
+                self.memory.write(cur_sp - 1, self.registers.get_c());
+                // decrement stack
+                self.registers.set_sp(cur_sp - 2);
+            },
+            // POP DE
+            0xD1 => {
+                let cur_sp = self.registers.get_sp();
+                let high = self.memory.read(cur_sp);
+                let low = self.memory.read(cur_sp + 1);
+                self.registers.set_de( ((high as u16) << 8) | (low as u16) );
+                self.registers.set_sp(cur_sp + 2);
+            },
+            // PUSH DE
+            0xD5 => {
+                // push register pair onto stack, decrement stack by 2
+                let cur_sp = self.registers.get_sp();
+
+                // write upper byte to stack
+                self.memory.write(cur_sp, self.registers.get_d());
+                // write lower byte to stack
+                self.memory.write(cur_sp - 1, self.registers.get_e());
+                // decrement stack
+                self.registers.set_sp(cur_sp - 2);
+            },
+            // LDH (n),A
+            0xE0 => {
+                // put A into address $FF00+n
+                let imm = self.memory.read(cur_pc + 1);
+                self.memory.write(0xFF00 + imm as u16, self.registers.get_a());
+            },
+            // POP HL
+            0xE1 => {
+                let cur_sp = self.registers.get_sp();
+                let high = self.memory.read(cur_sp);
+                let low = self.memory.read(cur_sp + 1);
+                self.registers.set_hl( ((high as u16) << 8) | (low as u16) );
+                self.registers.set_sp(cur_sp + 2);
+            }
+            // LD ($FF00+C),A
+            0xE2 => {
+                let addr = (0xFF00 + self.registers.get_c()) as u16;
+                self.memory.write(addr, self.registers.get_a());
+            },
+            // PUSH HL
+            0xE5 => {
+                // push register pair onto stack, decrement stack by 2
+                let cur_sp = self.registers.get_sp();
+
+                // write upper byte to stack
+                self.memory.write(cur_sp, self.registers.get_h());
+                // write lower byte to stack
+                self.memory.write(cur_sp - 1, self.registers.get_l());
+                // decrement stack
+                self.registers.set_sp(cur_sp - 2);
+            },
             // LD (nn),A
             0xEA => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
                 self.memory.write(v, self.registers.get_a());
+            },
+            // XOR d8
+            0xEE => {
+                let imm = self.memory.read(cur_pc + 1);
+                // XOR the immediate value with register A
+                let res = self.registers.get_a() ^ imm;
+
+                // set flags
+                self.registers.set_flag_zero( (res == 0) as u8);
+                self.registers.set_flag_carry(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
             }
+            // LDH A,(n)
+            0xF0 => {
+                // put value at $FF00+n into A
+                let imm = self.memory.read(cur_pc + 1);
+                let v = self.memory.read(0xFF00 + imm as u16);
+                self.registers.set_a(v);
+            },
+            // POP AF
+            0xF1 => {
+                let cur_sp = self.registers.get_sp();
+                let high = self.memory.read(cur_sp);
+                let low = self.memory.read(cur_sp + 1);
+                self.registers.set_af( ((high as u16) << 8) | (low as u16) );
+                self.registers.set_sp(cur_sp + 2);
+            },
+            // LD A,(C) (store value at 0xFF00 + register C into A
+            0xF2 => {
+                let v = self.memory.read((0xFF00 + self.registers.get_c()) as u16);
+                self.registers.set_a(v);
+            },
+            // PUSH AF
+            0xF5 => {
+                // push register pair onto stack, decrement stack by 2
+                let cur_sp = self.registers.get_sp();
+
+                // write upper byte to stack
+                self.memory.write(cur_sp, self.registers.get_a());
+                // write lower byte to stack
+                self.memory.write(cur_sp - 1, self.registers.get_f());
+                // decrement stack
+                self.registers.set_sp(cur_sp - 2);
+            },
+            // LD SP,HL
+            0xF9 => self.registers.set_sp(self.registers.get_hl()),
 
             _ => panic!("Unimplemented opcode: {:X?}", cur_op)
         }
