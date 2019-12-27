@@ -139,6 +139,10 @@ impl Registers {
         self.a
     }
 
+    pub fn get_f(&self) -> u8 {
+        self.f
+    }
+
     pub fn get_b(&self) -> u8 {
         self.b
     }

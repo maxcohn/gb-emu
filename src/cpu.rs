@@ -124,6 +124,9 @@ const CB_MNEMONICS: [&str; 0x100] = [
     "SET 6,B", "SET 6,C", "SET 6,D", "SET 6,E", "SET 6,H", "SET 6,L", "SET 6,(HL)", "SET 6,A", "SET 7,B", "SET 7,C", "SET 7,D", "SET 7,E", "SET 7,H", "SET 7,L", "SET 7,(HL)", "SET 7,A",
 ];
 
+// Link to a reddit thread with info on carries
+//https://www.reddit.com/r/EmuDev/comments/4clh23/trouble_with_halfcarrycarry_flag/
+
 /// Checks if the addition of two number results in a half carry
 fn half_carry_add(a: u8, b: u8) -> bool {
     (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10
@@ -134,13 +137,20 @@ fn carry_add(a: u8, b: u8) -> bool {
     a > (0xff - b)
 }
 
-//TODO half_carry_sub
+/// Checks if the subtraction of two numbers results in a borrow in the 4th bit
+fn half_carry_sub(a: u8, b: u8) -> bool {
+    ((a & 0xF) - (b & 0xF)) < 0
+}
+
+/// Checks if the substraction of two numbers results in a borrow
+fn carry_sub(a: u8, b: u8) -> bool {
+    a < b
+}
 
 //TODO refactor to put all variants of an op into a single match arm, as opposed to
 //TODO multiple, how it is now
 
 //TODO replace all standard addition and subtraction with wrapping versions
-
 
 
 /// CPU and it's components: registers, memory
@@ -347,7 +357,7 @@ impl CPU {
             // LD HL,nn
             0x21 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
-                self.registers.set_HL(v);
+                self.registers.set_hl(v);
             },
             // LDI (HL),A - LD (HL+),A - LD (HLI),A
             0x22 => {
@@ -460,7 +470,7 @@ impl CPU {
                 self.registers.set_flag_zero((res == 0) as u8);
             },
             // LD B,n
-            0x40..0x46 => {
+            0x40..=0x46 => {
                 let v = match cur_op {
                     0x40 => self.registers.get_b(),
                     0x41 => self.registers.get_c(),
@@ -476,7 +486,7 @@ impl CPU {
             // LD B,A
             0x47 => self.registers.set_b(self.registers.get_a()),
             // LD C,n
-            0x48..0x4E => {
+            0x48..=0x4E => {
                 let v = match cur_op {
                     0x48 => self.registers.get_b(),
                     0x49 => self.registers.get_c(),
@@ -492,7 +502,7 @@ impl CPU {
             // LD C,A
             0x4F => self.registers.set_c(self.registers.get_a()),
             // LD D,n
-            0x50..0x56 => {
+            0x50..=0x56 => {
                 let v = match cur_op {
                     0x50 => self.registers.get_b(),
                     0x51 => self.registers.get_c(),
@@ -508,7 +518,7 @@ impl CPU {
             // LD D,A
             0x57 => self.registers.set_d(self.registers.get_a()),
             // LD E,n
-            0x58..0x5E => {
+            0x58..=0x5E => {
                 let v = match cur_op {
                     0x58 => self.registers.get_b(),
                     0x59 => self.registers.get_c(),
@@ -524,7 +534,7 @@ impl CPU {
             // LD E,A
             0x5F => self.registers.set_e(self.registers.get_a()),
             // LD H,n
-            0x60..0x66 => {
+            0x60..=0x66 => {
                 let v = match cur_op {
                     0x60 => self.registers.get_b(),
                     0x61 => self.registers.get_c(),
@@ -540,7 +550,7 @@ impl CPU {
             // LD H,A
             0x67 => self.registers.set_h(self.registers.get_a()),
             // LD L,n
-            0x68..0x6E => {
+            0x68..=0x6E => {
                 let v = match cur_op {
                     0x68 => self.registers.get_b(),
                     0x69 => self.registers.get_c(),
@@ -556,7 +566,7 @@ impl CPU {
             // LD L,A
             0x6F => self.registers.set_l(self.registers.get_a()),
             // LD (HL),n
-            0x70..0x75 => {
+            0x70..=0x75 => {
                 let v = match cur_op {
                     0x70 => self.registers.get_b(),
                     0x71 => self.registers.get_c(),
@@ -574,7 +584,7 @@ impl CPU {
                 self.memory.write(v, self.registers.get_a());
             }
             // LD A,n
-            0x78..0x7F => {
+            0x78..=0x7F => {
                 let v = match cur_op {
                     0x78 => self.registers.get_b(),
                     0x79 => self.registers.get_c(),
@@ -590,8 +600,35 @@ impl CPU {
             },
             // LD A,A (doesn't seem necessary, but ok)
             0x7F => self.registers.set_a(self.registers.get_a()),
+            // ADD A,n
+            0x80..=0x87 | 0xC6 => {
+                let v = match cur_op {
+                    0x80 => self.registers.get_b(),
+                    0x81 => self.registers.get_c(),
+                    0x82 => self.registers.get_d(),
+                    0x83 => self.registers.get_e(),
+                    0x84 => self.registers.get_h(),
+                    0x85 => self.registers.get_l(),
+                    0x86 => self.memory.read(self.registers.get_hl()),
+                    0x87 => self.registers.get_a(),
+                    0xC6 => self.memory.read(cur_pc + 1),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x80..0x87 and 0xC6 match arm", cur_op),
+                };
+
+                let a = self.registers.get_a();
+
+                let res = a.wrapping_add(v);
+
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero((res == 0) as u8);
+                self.registers.set_flag_carry(carry_add(a, v) as u8);
+                self.registers.set_flag_half_carry(half_carry_add(a, v) as u8);
+                self.registers.set_flag_sub(0);
+            }
             // ADC A,n
-            0x88..0x8F | 0xCE => {
+            0x88..=0x8F | 0xCE => {
                 let v = match cur_op {
                     0x88 => self.registers.get_b(),
                     0x89 => self.registers.get_c(),
@@ -602,7 +639,7 @@ impl CPU {
                     0x8E => self.memory.read(self.registers.get_hl()),
                     0x8F => self.registers.get_a(),
                     0xCE => self.memory.read(cur_pc + 1),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x88..0x8F and 0xCE but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' seen within range 0x88..0x8F and 0xCE match arm", cur_op),
                 };
                 let a = self.registers.get_a();
                 let carry = self.registers.get_flag_carry();
@@ -619,7 +656,7 @@ impl CPU {
                 self.registers.set_flag_sub(0);
             },
             // SUB,n
-            0x90..0x97 | 0xD6 => {
+            0x90..=0x97 | 0xD6 => {
                 let v = match cur_op {
                     0x90 => self.registers.get_b(),
                     0x91 => self.registers.get_c(),
@@ -633,10 +670,19 @@ impl CPU {
                     _ => panic!("Opcode: '{:X?}' got into inner match arm, not supposed to happen", cur_op),
                 };
                 let a = self.registers.get_a();
-                //TODO finish implementing
+                let res = v - a;
+
+                // store result in register A
+                self.registers.set_a(res);
+
+                // set flags
+                self.registers.set_flag_zero((res == 0) as u8);
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry(half_carry_sub(v, a) as u8);
+                self.registers.set_flag_carry(carry_sub(v, a) as u8);
             },
             // AND n
-            0xA0..0xA7 => {
+            0xA0..=0xA7 => {
                 let v = match cur_op {
                     0xA0 => self.registers.get_b(),
                     0xA1 => self.registers.get_c(),
@@ -660,7 +706,7 @@ impl CPU {
 
             },
             // XOR n
-            0xA8..0xAF => {
+            0xA8..=0xAF => {
                 // get value store within wanted register
                 let v = match cur_op {
                     0xAF => self.registers.get_a(),
@@ -684,7 +730,7 @@ impl CPU {
                 self.registers.set_flag_sub(0);
             }
             // OR n
-            0xB0..0xB7 => {
+            0xB0..=0xB7 => {
                 let v = match cur_op {
                     0xB0 => self.registers.get_b(),
                     0xB1 => self.registers.get_c(),
@@ -762,7 +808,7 @@ impl CPU {
             }
             // LD ($FF00+C),A
             0xE2 => {
-                let addr = (0xFF00 + self.registers.get_c()) as u16;
+                let addr = (0xFF00 + self.registers.get_c() as u16);
                 self.memory.write(addr, self.registers.get_a());
             },
             // PUSH HL
@@ -836,7 +882,7 @@ impl CPU {
             },
             // LD A,(C) (store value at 0xFF00 + register C into A
             0xF2 => {
-                let v = self.memory.read((0xFF00 + self.registers.get_c()) as u16);
+                let v = self.memory.read(0xFF00 + self.registers.get_c() as u16);
                 self.registers.set_a(v);
             },
             // PUSH AF
@@ -885,7 +931,7 @@ mod tests {
     }
 
     #[test]
-    fn lexer_test1() {
-
+    fn add() {
+        before_each();
     }
 }
