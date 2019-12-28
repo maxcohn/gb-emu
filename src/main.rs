@@ -24,17 +24,17 @@ fn main() {
         memory.write(i as u16, *b);
     }
 
-    let mut cpu = CPU::new(memory);
+    //let mut cpu = CPU::new(memory);
 
     /*
     for i in 0..100 {
         cpu.next_instruction();
     }
     */
-    cpu.memory.write(0x100 as u16, 0x01);
-    cpu.memory.write(0x101 as u16, 0x44);
-    cpu.memory.write(0x102 as u16, 0x55);
-    cpu.exec();
+    //cpu.memory.write(0x100 as u16, 0x01);
+    //cpu.memory.write(0x101 as u16, 0x44);
+    //cpu.memory.write(0x102 as u16, 0x55);
+    //cpu.exec();
 
-    println!("{:X?}", cpu.registers.get_bc());
+    //println!("{:X?}", cpu.registers.get_bc());
 }

@@ -31,7 +31,7 @@ impl Registers {
             h: 0,
             l: 0,
             sp: 0xfffe, // default for SP, but should not be relied upon.
-            pc: 0x100, // All GB programs start at 0x100
+            pc: 0, // All GB programs start at 0x100
         }
     }
 
@@ -189,7 +189,7 @@ impl Registers {
     pub fn set_flag_zero(&mut self, f: u8) {
         if f == 0 {
             // set flag to 0
-            self.f &= 0b0 << 7
+            self.f &= (!0b1) << 7
         } else {
             // set flag to 1
             self.f |= ZERO_FLAG
@@ -199,7 +199,7 @@ impl Registers {
     pub fn set_flag_sub(&mut self, f: u8) {
         if f == 0 {
             // set flag to 0
-            self.f &= 0b0 << 6
+            self.f &= !(0b1 << 6)
         } else {
             // set flag to 1
             self.f |= SUB_FLAG
@@ -210,7 +210,7 @@ impl Registers {
 
         if f == 0 {
             // set flag to 0
-            self.f &= 0b0 << 5
+            self.f &= !(0b1 << 5)
         } else {
             // set flag to 1
             self.f |= HALF_CARRY_FLAG;
@@ -221,7 +221,7 @@ impl Registers {
     pub fn set_flag_carry(&mut self, f: u8) {
         if f == 0 {
             // set flag to 0
-            self.f &= 0b0 << 4
+            self.f &= !(0b1 << 4)
         } else {
             // set flag to 1
             self.f |= CARRY_FLAG;
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_16bit() {
+    fn get_16bit() {
         let r = create_registers();
 
         assert_eq!(((r.a as u16) << 8) | (r.f as u16), r.get_af());
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_8bit() {
+    fn get_8bit() {
         let r = create_registers();
 
         assert_eq!(r.a, r.get_a());
@@ -283,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn test_set_16bit() {
+    fn set_16bit() {
         let mut r = create_registers();
         r.set_af(0x1020);
         r.set_bc(0x2030);
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn test_set_8bit() {
+    fn set_8bit() {
         let mut r = create_registers();
         r.set_a(0x11);
         r.set_b(0x22);
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_flags() {
+    fn get_flags() {
         let mut r = create_registers();
 
         r.f = 0b1011_0000;
@@ -336,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    fn test_set_flags() {
+    fn set_flags() {
         let mut r = create_registers();
 
         r.set_flag_zero(0);

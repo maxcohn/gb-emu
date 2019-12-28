@@ -1,6 +1,12 @@
 use crate::registers::Registers;
 use crate::memory::Memory;
 
+//TODO refactor to put all variants of an op into a single match arm, as opposed to
+//TODO multiple, how it is now
+
+//TODO replace all standard addition and subtraction with wrapping versions
+
+
 /// Length of corresponding opcodes in bytes. If 0, that means the opcode isn't used
 const OP_LENGTHS: [u8;0x100] = [
     1, 3, 1, 1, 1, 1, 2, 1, 3, 1, 1, 1, 1, 1, 2, 1, // 0
@@ -147,25 +153,25 @@ fn carry_sub(a: u8, b: u8) -> bool {
     a < b
 }
 
-//TODO refactor to put all variants of an op into a single match arm, as opposed to
-//TODO multiple, how it is now
-
-//TODO replace all standard addition and subtraction with wrapping versions
-
-
 /// CPU and it's components: registers, memory
 //TODO remove `pub` after done testing
 pub struct CPU {
     pub registers: Registers,
-    pub memory: Memory,
+    memory: Memory,
+    /// Interrupt Master Enable
+    pub ime: bool,
+    /// Whether the CPU and LCD are halted at the moment
+    pub halted: bool,
 }
 
 impl CPU {
     /// Create a new CPU struct
-    pub fn new(mem: Memory) -> CPU {
+    pub fn new() -> CPU {
         CPU {
             registers: Registers::new(),
-            memory: mem,//Memory::new(),
+            memory: Memory::new(),
+            ime: false, // IME is off by default
+            halted: false,
         }
     }
 
@@ -189,7 +195,13 @@ impl CPU {
         let cur_pc = self.registers.get_pc();
         let cur_op = self.memory.read(cur_pc);
 
+        // whether we should increment the PC. True most of the time, false when jumping.
+        let mut inc_pc = true;
+
         match cur_op {
+            0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
+                panic!("Opcode '{}' is unused and should not have occurred.", cur_op);
+            },
             // NOP
             0x00 => {},
             // LD BC,d16
@@ -257,6 +269,19 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_b(v);
             },
+            // RLCA
+            0x07 => {
+                let a = self.registers.get_a();
+                // check if there is a new carry
+                let c = ((a & 0x80) == 0x80) as u8;
+                let res = (a << 1) | c;
+
+                // set flags
+                self.registers.set_flag_carry(c);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
             // LD (nn),SP
             0x08 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -302,6 +327,23 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_c(v);
             },
+            // RRCA
+            0x0F => {
+                let a = self.registers.get_a();
+                // check if there is a new carry
+                let c = ((a & 0x01) == 0x01) as u8;
+                let res = if c == 0 {
+                    a >> 1
+                } else {
+                    0x80 | (a >> 1)
+                };
+
+                // set flags
+                self.registers.set_flag_carry(c);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
             // LD DE,nn
             0x11 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -333,6 +375,28 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_d(v);
             },
+            // RLA
+            0x17 => {
+                let a = self.registers.get_a();
+                // check if there is a new carry
+                let c = ((a & 0x80) == 0x80) as u8;
+                let res = (a << 1) + self.registers.get_flag_carry();
+
+                // set flags
+                self.registers.set_flag_carry(c);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // JR n
+            0x18 => {
+                // get immediate value (have to do some interesting casting for addition later)
+                let imm = self.get_imm_1byte(cur_pc) as i8 as i16 as u16;
+                let new_pc = cur_pc + imm;
+                // set PC to PC + immediate value
+                self.registers.set_pc(new_pc);
+                inc_pc = false;
+            },
             // DEC DE
             0x1B => self.registers.set_de(self.registers.get_de() - 1),
             // DEC E
@@ -354,6 +418,43 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_e(v);
             },
+            // RRA
+            0x1F => {
+                let a = self.registers.get_a();
+                // check if there is a new carry
+                let c = ((a & 0x01) == 0x01) as u8;
+                let res = if self.registers.get_flag_carry() == 0 {
+                    a >> 1
+                } else {
+                    0x80 | (a >> 1)
+                };
+
+                // set flags
+                self.registers.set_flag_carry(c);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // JR cc,n
+            0x20 | 0x28 | 0x30 | 0x38 => {
+                // get immediate value (have to do some interesting casting for addition later)
+                let imm = self.get_imm_1byte(cur_pc) as i8 as i16 as u16;
+                let new_pc = cur_pc + imm;
+
+                let is_jump = match cur_op {
+                    0x20 => !(self.registers.get_flag_zero() != 0),
+                    0x28 => self.registers.get_flag_zero() != 0,
+                    0x30 => !(self.registers.get_flag_carry() != 0),
+                    0x38 => self.registers.get_flag_carry() != 0,
+                    _ => panic!("Opcode '{}' landed in JP cc,n match arm", cur_op),
+                };
+
+                if is_jump {
+                    inc_pc = false;
+                    self.registers.set_pc(new_pc);
+                }
+
+            }
             // LD HL,nn
             0x21 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -386,6 +487,8 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_h(v);
             },
+            // DAA
+            //0x27 => {panic!("UNIMPLEMENTED 0x27");},
             // LDI A,(HL) - LD A,(HL+) - LD A,(HLI)
             0x2A => {
                 // put value at addr HL into A, increment HL
@@ -414,6 +517,8 @@ impl CPU {
                 let v = self.memory.read(cur_pc + 1);
                 self.registers.set_l(v);
             },
+            // CPL
+            0x2F => self.registers.set_a(!self.registers.get_a()),
             // LD SP,nn
             0x31 => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -446,6 +551,12 @@ impl CPU {
                 let imm = self.memory.read(cur_pc + 1);
                 self.memory.write(self.registers.get_hl(), imm);
             }
+            // SCF
+            0x37 => {
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_carry(1);
+            }
             // LDD A,(HL) - LD A,(HL-) - LD A,(HLD)
             0x3A => {
                 // store value at address HL into A, decrement HL
@@ -468,6 +579,17 @@ impl CPU {
                 self.registers.set_flag_sub(1);
                 self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
                 self.registers.set_flag_zero((res == 0) as u8);
+            },
+            // CCF
+            0x3F => {
+                let c = if self.registers.get_flag_carry() == 0 {
+                    1
+                } else {
+                    0
+                };
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_carry(c);
             },
             // LD B,n
             0x40..=0x46 => {
@@ -577,15 +699,21 @@ impl CPU {
                     _ => panic!("Opcode: '{:X?}' seen within range 0x60..0x46 but was not", cur_op),
                 };
                 self.memory.write(self.registers.get_hl(), v);
-            }
+            },
+            // HALT
+            0x76 => self.halted = true,
             // LD (HL),A
             0x77 => {
                 let v = self.registers.get_hl();
                 self.memory.write(v, self.registers.get_a());
             }
             // LD A,n
-            0x78..=0x7F => {
+            0x78..=0x7F | 0x0A | 0x1A | 0x3E | 0xFA => {
                 let v = match cur_op {
+                    0x0A => self.memory.read(self.registers.get_bc()),
+                    0x1A => self.memory.read(self.registers.get_de()),
+                    0x3E => self.get_imm_1byte(cur_pc),
+                    0xFA => self.memory.read(self.get_imm_2byte(cur_pc)),
                     0x78 => self.registers.get_b(),
                     0x79 => self.registers.get_c(),
                     0x7A => self.registers.get_d(),
@@ -598,8 +726,6 @@ impl CPU {
                 };
                 self.registers.set_a(v);
             },
-            // LD A,A (doesn't seem necessary, but ok)
-            0x7F => self.registers.set_a(self.registers.get_a()),
             // ADD A,n
             0x80..=0x87 | 0xC6 => {
                 let v = match cur_op {
@@ -681,6 +807,30 @@ impl CPU {
                 self.registers.set_flag_half_carry(half_carry_sub(v, a) as u8);
                 self.registers.set_flag_carry(carry_sub(v, a) as u8);
             },
+            // SBC A,n
+            0x98..=0x9F | 0xDE => {
+                let v = match cur_op {
+                    0xDE => self.get_imm_1byte(cur_pc),
+                    0x98 => self.registers.get_b(),
+                    0x99 => self.registers.get_c(),
+                    0x9A => self.registers.get_d(),
+                    0x9B => self.registers.get_e(),
+                    0x9C => self.registers.get_h(),
+                    0x9D => self.registers.get_l(),
+                    0x9E => self.memory.read(self.registers.get_hl()),
+                    0x9F => self.registers.get_a(),
+                    _ => panic!("Opcode '{}' landed in SBC A,n match arm", cur_op),
+                };
+                let a = self.registers.get_a();
+                let c = self.registers.get_flag_carry();
+                let res = v.wrapping_sub(a.wrapping_sub(c));
+
+
+                self.registers.set_flag_zero((res == 0) as u8);
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry(((a & 0x0F) < (v & 0x0F) + c) as u8);
+                self.registers.set_flag_carry(((a as u16) < (v as u16 + c as u16)) as u8);
+            },
             // AND n
             0xA0..=0xA7 => {
                 let v = match cur_op {
@@ -751,14 +901,111 @@ impl CPU {
                 self.registers.set_flag_carry(0);
                 self.registers.set_flag_half_carry(0);
                 self.registers.set_flag_sub(0);
-            }
-            // POP BC
-            0xC1 => {
-                let cur_sp = self.registers.get_sp();
-                let high = self.memory.read(cur_sp);
-                let low = self.memory.read(cur_sp + 1);
-                self.registers.set_bc( ((high as u16) << 8) | (low as u16) );
-                self.registers.set_sp(cur_sp + 2);
+            },
+            // CP n
+            0xB8..=0xBF | 0xFE=> {
+                let v = match cur_op {
+                    0xB8 => self.registers.get_b(),
+                    0xB9 => self.registers.get_c(),
+                    0xBA => self.registers.get_d(),
+                    0xBB => self.registers.get_e(),
+                    0xBC => self.registers.get_h(),
+                    0xBD => self.registers.get_l(),
+                    0xBE => self.memory.read(self.registers.get_hl()),
+                    0xBF => self.registers.get_a(),
+                    0xFE => self.get_imm_1byte(cur_pc),
+                    _ => panic!("Opcode '{}' landed in CP n branch arm", cur_op),
+                };
+                let a = self.registers.get_a();
+
+                let res = a - v;
+
+                self.registers.set_flag_zero((res == 0) as u8);
+                self.registers.set_flag_sub(1);
+                self.registers.set_flag_half_carry(half_carry_sub(a, v) as u8);
+                self.registers.set_flag_carry(carry_sub(a, v) as u8);
+            },
+            // RET cc
+            0xC0 | 0xC8 | 0xD0 | 0xD8 => {
+                let is_jump = match cur_op {
+                    0xC0 => !(self.registers.get_flag_zero() != 0),
+                    0xC8 => self.registers.get_flag_zero() != 0,
+                    0xD0 => !(self.registers.get_flag_carry() != 0),
+                    0xD8 => self.registers.get_flag_carry() != 0,
+                    _ => panic!("Opcode '{}' landed in RET cc match arm", cur_op),
+                };
+
+                if is_jump {
+                    inc_pc = false;
+                    // pop and move the stack
+                    let addr = self.peek_stack();
+                    self.registers.set_sp(self.registers.get_sp() + 2);
+
+                    self.registers.set_pc(addr);
+                }
+            },
+            // POP nn
+            0xC1 | 0xD1 | 0xE1 | 0xF1 => {
+                // get data at the top of the stack
+                let data = self.peek_stack();
+                // move the stack pointer back up
+                self.registers.set_sp(self.registers.get_sp() + 2);
+
+                // set wanted register to be popped data
+                match cur_op {
+                    0xC1 => self.registers.set_bc(data),
+                    0xD1 => self.registers.set_de(data),
+                    0xE1 => self.registers.set_hl(data),
+                    0xF1 => self.registers.set_af(data),
+                    _ => panic!("Opcode '{}' landed in match arm of POP nn", cur_op),
+                }
+
+            },
+            // JP cc,nn
+            0xC2 | 0xCA | 0xD2 | 0xDA => {
+                let addr = self.get_imm_2byte(cur_pc);
+                let is_jump = match cur_op {
+                    0xC2 => !(self.registers.get_flag_zero() != 0),
+                    0xCA => self.registers.get_flag_zero() != 0,
+                    0xD2 => !(self.registers.get_flag_carry() != 0),
+                    0xDA => self.registers.get_flag_carry() != 0,
+                    _ => panic!("Opcode '{}' landed in JP cc,nn match arm", cur_op),
+                };
+
+                if is_jump {
+                    inc_pc = false;
+                    self.registers.set_pc(addr);
+                }
+            },
+            // JP a16
+            0xC3 => {
+                // get two byte immediate value
+                let addr = self.get_imm_2byte(cur_pc);
+
+                self.registers.set_pc(addr);
+                inc_pc = false;
+            },
+            // CALL cc,nn
+            0xC4 | 0xCC | 0xD4 | 0xDC => {
+                let addr = self.get_imm_2byte(cur_pc);
+                let sp = self.registers.get_sp();
+                let is_jump = match cur_op {
+                    0xC4 => !(self.registers.get_flag_zero() != 0),
+                    0xCC => self.registers.get_flag_zero() != 0,
+                    0xD4 => !(self.registers.get_flag_carry() != 0),
+                    0xDC => self.registers.get_flag_carry() != 0,
+                    _ => panic!("Opcode '{}' landed in CALL cc,nn match arm", cur_op),
+                };
+
+                if is_jump {
+                    inc_pc = false;
+                    self.registers.set_pc(addr);
+                    //TODO possibly write a push function?
+                    // push memory next address onto stack
+                    self.memory.write(sp, (addr & 0xFF) as u8);
+                    self.memory.write(sp + 1, (addr >> 8) as u8);
+                    self.registers.set_sp(sp + 2);
+                }
             },
             // PUSH BC
             0xC5 => {
@@ -772,13 +1019,51 @@ impl CPU {
                 // decrement stack
                 self.registers.set_sp(cur_sp - 2);
             },
-            // POP DE
-            0xD1 => {
-                let cur_sp = self.registers.get_sp();
-                let high = self.memory.read(cur_sp);
-                let low = self.memory.read(cur_sp + 1);
-                self.registers.set_de( ((high as u16) << 8) | (low as u16) );
-                self.registers.set_sp(cur_sp + 2);
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
+                let addr = match cur_op {
+                    0xC7 => 0x00,
+                    0xCF => 0x08,
+                    0xD7 => 0x10,
+                    0xDF => 0x18,
+                    0xE7 => 0x20,
+                    0xEF => 0x28,
+                    0xF7 => 0x30,
+                    0xFF => 0x38,
+                    _ => panic!("Opcode '{}' landed in RST n branch arm", {cur_op}),
+                };
+                let sp = self.registers.get_sp();
+                //TODO possibly write a push function?
+                // push current memory next address onto stack
+                self.memory.write(sp, (cur_pc & 0xFF) as u8);
+                self.memory.write(sp + 1, (cur_pc >> 8) as u8);
+
+                self.registers.set_pc(addr);
+                inc_pc = false;
+            },
+            // CALL nn
+            0xCD => {
+                let imm = self.get_imm_2byte(cur_pc);
+                let next_addr = cur_pc + 1;
+                let sp = self.registers.get_sp();
+
+                //TODO possibly write a push function?
+                // push memory next address onto stack
+                self.memory.write(sp, (next_addr & 0xFF) as u8);
+                self.memory.write(sp + 1, (next_addr >> 8) as u8);
+
+                // jump to addr
+                self.registers.set_pc(imm);
+                inc_pc = false;
+            },
+            // RET
+            0xC9 => {
+                // pop two byte from the top of the stack
+                let addr = self.peek_stack();
+                self.registers.set_sp(self.registers.get_sp() + 2);
+
+                // jump to the popped address
+                inc_pc = false;
+                self.registers.set_pc(addr);
             },
             // PUSH DE
             0xD5 => {
@@ -792,20 +1077,25 @@ impl CPU {
                 // decrement stack
                 self.registers.set_sp(cur_sp - 2);
             },
+            // RETI
+            0xD9 => {
+                // pop address off of stack
+                let addr = self.peek_stack();
+                self.registers.set_sp(self.registers.get_sp() + 2);
+
+                // jump to popped address
+                inc_pc = false;
+                self.registers.set_pc(addr);
+
+                // enable interrupts
+                self.ime = true;
+            },
             // LDH (n),A
             0xE0 => {
                 // put A into address $FF00+n
                 let imm = self.memory.read(cur_pc + 1);
                 self.memory.write(0xFF00 + imm as u16, self.registers.get_a());
             },
-            // POP HL
-            0xE1 => {
-                let cur_sp = self.registers.get_sp();
-                let high = self.memory.read(cur_sp);
-                let low = self.memory.read(cur_sp + 1);
-                self.registers.set_hl( ((high as u16) << 8) | (low as u16) );
-                self.registers.set_sp(cur_sp + 2);
-            }
             // LD ($FF00+C),A
             0xE2 => {
                 let addr = (0xFF00 + self.registers.get_c() as u16);
@@ -847,6 +1137,11 @@ impl CPU {
                 self.registers.set_flag_zero(0);
                 self.registers.set_flag_sub(0);
             },
+            // JP (HL)
+            0xE9 => {
+                self.registers.set_pc(self.registers.get_hl());
+                inc_pc = false;
+            },
             // LD (nn),A
             0xEA => {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
@@ -872,19 +1167,13 @@ impl CPU {
                 let v = self.memory.read(0xFF00 + imm as u16);
                 self.registers.set_a(v);
             },
-            // POP AF
-            0xF1 => {
-                let cur_sp = self.registers.get_sp();
-                let high = self.memory.read(cur_sp);
-                let low = self.memory.read(cur_sp + 1);
-                self.registers.set_af( ((high as u16) << 8) | (low as u16) );
-                self.registers.set_sp(cur_sp + 2);
-            },
             // LD A,(C) (store value at 0xFF00 + register C into A
             0xF2 => {
                 let v = self.memory.read(0xFF00 + self.registers.get_c() as u16);
                 self.registers.set_a(v);
             },
+            // DI
+            0xF3 => self.ime = false, // TODO maybe change to enable after next instruction
             // PUSH AF
             0xF5 => {
                 // push register pair onto stack, decrement stack by 2
@@ -909,29 +1198,113 @@ impl CPU {
                 self.registers.set_flag_carry(0);
                 self.registers.set_flag_half_carry(0);
                 self.registers.set_flag_sub(0);
-            }
+            },
+            // LDHL SP,n
+            0xF8 => {
+                let imm = ((self.get_imm_1byte(cur_pc) as i8) as i16) as u16;
+                let sp = self.registers.get_sp();
+
+                let res = sp + imm;
+
+                self.registers.set_sp(sp + imm);
+
+                self.registers.set_flag_zero(0);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(half_carry_add((sp & 0xFF) as u8, (imm & 0xFF) as u8) as u8);
+                self.registers.set_flag_carry(carry_add((sp & 0xFF) as u8, (imm & 0xFF) as u8) as u8);
+            },
             // LD SP,HL
             0xF9 => self.registers.set_sp(self.registers.get_hl()),
-
+            0xFB => self.ime = true, // TODO maybe change to enable after next instruction
             _ => panic!("Unimplemented opcode: {:X?}", cur_op)
         }
 
         let cycles_passed = OP_CYCLES[cur_op as usize];
 
+        //TODO possibly replace with table?
+        // if we are supposed to increment the program counter, we do so
+        if inc_pc {
+            self.registers.set_pc(cur_pc + OP_LENGTHS[cur_op as usize] as u16);
+        }
 
     }
+
+    /// Returns the top two bytes of the stack as a u16. Doesn't move SP!
+    fn peek_stack(&self) -> u16 {
+        let cur_sp = self.registers.get_sp();
+        // get least and most significant bytes.
+        let ls = self.memory.read(cur_sp);
+        let ms = self.memory.read(cur_sp + 1);
+        ((ms as u16) << 8) | ((ls as u16) & 0xFF)
+        //(self.memory.read(cur_pc + 1) as u16) << 8 | ((self.memory.read(cur_pc + 2) as u16) & 0xFF)
+    }
+
+    //TODO possibly remove the pc param if nothing modifies it in the match
+    /// Returns the one byte immediate value following the given PC. Doesn't move PC!
+    fn get_imm_1byte(&self, pc: u16) -> u8 {
+        self.memory.read(pc + 1)
+    }
+
+    /// Returns the two byte immediate value following the given PC. Doesn't move the PC!
+    fn get_imm_2byte(&self, pc: u16) -> u16 {
+        // get least and most significant bytes.
+        let ls = self.memory.read(pc);
+        let ms = self.memory.read(pc + 1);
+        ((ms as u16) << 8) | ((ls as u16) & 0xFF)
+    }
+
+
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn before_each() {
-        let cpu = CPU::new(Memory::new());
+    fn before_each() -> CPU{
+        CPU::new()
     }
 
     #[test]
     fn add() {
-        before_each();
+        let mut cpu = before_each();
+        // set up registers
+        cpu.registers.set_pc(0u16);
+        cpu.registers.set_a(40u8);
+        cpu.registers.set_b(19u8);
+        cpu.registers.set_c(250u8);
+
+        // load ADD A,B
+        cpu.memory.write(0, 0x80);
+        // load ADD A,24
+        cpu.memory.write(1,0xC6);
+        cpu.memory.write(2, 24);
+        cpu.memory.write(3, 0x81);
+
+        // test ADD A,B
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 59);
+
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // test ADD A,24
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 83);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // test ADD A,C
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 77);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 1);
+
+
     }
 }
