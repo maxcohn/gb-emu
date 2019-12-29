@@ -737,7 +737,7 @@ impl CPU {
                     0x85 => self.registers.get_l(),
                     0x86 => self.memory.read(self.registers.get_hl()),
                     0x87 => self.registers.get_a(),
-                    0xC6 => self.memory.read(cur_pc + 1),
+                    0xC6 => self.get_imm_1byte(cur_pc),
                     _ => panic!("Opcode: '{:X?}' seen within range 0x80..0x87 and 0xC6 match arm", cur_op),
                 };
 
@@ -832,7 +832,7 @@ impl CPU {
                 self.registers.set_flag_carry(((a as u16) < (v as u16 + c as u16)) as u8);
             },
             // AND n
-            0xA0..=0xA7 => {
+            0xA0..=0xA7 | 0xE6 => {
                 let v = match cur_op {
                     0xA0 => self.registers.get_b(),
                     0xA1 => self.registers.get_c(),
@@ -842,6 +842,7 @@ impl CPU {
                     0xA5 => self.registers.get_l(),
                     0xA6 => self.memory.read(self.registers.get_hl()),
                     0xA7 => self.registers.get_a(),
+                    0xE6 => self.get_imm_1byte(cur_pc),
                     _ => panic!("Opcode: '{:X?}' seen within range 0xA0..0xA7 but was not", cur_op),
                 };
                 // AND the wanted register with A
@@ -856,7 +857,7 @@ impl CPU {
 
             },
             // XOR n
-            0xA8..=0xAF => {
+            0xA8..=0xAF | 0xEE => {
                 // get value store within wanted register
                 let v = match cur_op {
                     0xAF => self.registers.get_a(),
@@ -867,6 +868,7 @@ impl CPU {
                     0xAC => self.registers.get_h(),
                     0xAD => self.registers.get_l(),
                     0xAE => self.memory.read(self.registers.get_hl()),
+                    0xEE => self.get_imm_1byte(cur_pc),
                     _ => panic!("Opcode: '{:X?}' seen within range 0xA8..0xAF but was not", cur_op),
                 };
                 // XOR the wanted register with A
@@ -880,7 +882,7 @@ impl CPU {
                 self.registers.set_flag_sub(0);
             }
             // OR n
-            0xB0..=0xB7 => {
+            0xB0..=0xB7 | 0xF6 => {
                 let v = match cur_op {
                     0xB0 => self.registers.get_b(),
                     0xB1 => self.registers.get_c(),
@@ -890,6 +892,7 @@ impl CPU {
                     0xB5 => self.registers.get_l(),
                     0xB6 => self.memory.read(self.registers.get_hl()),
                     0xB7 => self.registers.get_a(),
+                    0xF6 => self.get_imm_1byte(cur_pc),
                     _ => panic!("Opcode: '{:X?}' seen within range 0xB0..0xB7 but was not", cur_op),
                 };
                 // OR the wanted register with A
@@ -1007,18 +1010,27 @@ impl CPU {
                     self.registers.set_sp(sp + 2);
                 }
             },
-            // PUSH BC
-            0xC5 => {
+            // PUSH nn
+            0xC5 | 0xD5 | 0xE5 | 0xF5 => {
                 // push register pair onto stack, decrement stack by 2
                 let cur_sp = self.registers.get_sp();
 
+                let (high, low) = match cur_op {
+                    0xC5 => (self.registers.get_b(), self.registers.get_c()),
+                    0xD5 => (self.registers.get_d(), self.registers.get_e()),
+                    0xE5 => (self.registers.get_h(), self.registers.get_l()),
+                    0xF5 => (self.registers.get_a(), self.registers.get_f()),
+                    _ => panic!("Opcode '{}' landed in PUSH nn match arm", cur_op),
+                };
+
                 // write upper byte to stack
-                self.memory.write(cur_sp, self.registers.get_b());
+                self.memory.write(cur_sp, high);
                 // write lower byte to stack
-                self.memory.write(cur_sp - 1, self.registers.get_c());
+                self.memory.write(cur_sp - 1, low);
                 // decrement stack
                 self.registers.set_sp(cur_sp - 2);
             },
+            // RST n
             0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
                 let addr = match cur_op {
                     0xC7 => 0x00,
@@ -1065,18 +1077,6 @@ impl CPU {
                 inc_pc = false;
                 self.registers.set_pc(addr);
             },
-            // PUSH DE
-            0xD5 => {
-                // push register pair onto stack, decrement stack by 2
-                let cur_sp = self.registers.get_sp();
-
-                // write upper byte to stack
-                self.memory.write(cur_sp, self.registers.get_d());
-                // write lower byte to stack
-                self.memory.write(cur_sp - 1, self.registers.get_e());
-                // decrement stack
-                self.registers.set_sp(cur_sp - 2);
-            },
             // RETI
             0xD9 => {
                 // pop address off of stack
@@ -1098,33 +1098,8 @@ impl CPU {
             },
             // LD ($FF00+C),A
             0xE2 => {
-                let addr = (0xFF00 + self.registers.get_c() as u16);
+                let addr = 0xFF00 + self.registers.get_c() as u16;
                 self.memory.write(addr, self.registers.get_a());
-            },
-            // PUSH HL
-            0xE5 => {
-                // push register pair onto stack, decrement stack by 2
-                let cur_sp = self.registers.get_sp();
-
-                // write upper byte to stack
-                self.memory.write(cur_sp, self.registers.get_h());
-                // write lower byte to stack
-                self.memory.write(cur_sp - 1, self.registers.get_l());
-                // decrement stack
-                self.registers.set_sp(cur_sp - 2);
-            },
-            // AND d8
-            0xE6 => {
-                let imm = self.memory.read(cur_pc + 1);
-                // AND the immediate value with register A
-                let res = self.registers.get_a() & imm;
-                self.registers.set_a(res);
-
-                // set flags
-                self.registers.set_flag_zero( (res == 0) as u8);
-                self.registers.set_flag_carry(0);
-                self.registers.set_flag_half_carry(1);
-                self.registers.set_flag_sub(0);
             },
             // ADD SP,d8
             0xE8 => {
@@ -1147,19 +1122,6 @@ impl CPU {
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
                 self.memory.write(v, self.registers.get_a());
             },
-            // XOR d8
-            0xEE => {
-                let imm = self.memory.read(cur_pc + 1);
-                // XOR the immediate value with register A
-                let res = self.registers.get_a() ^ imm;
-                self.registers.set_a(res);
-
-                // set flags
-                self.registers.set_flag_zero( (res == 0) as u8);
-                self.registers.set_flag_carry(0);
-                self.registers.set_flag_half_carry(0);
-                self.registers.set_flag_sub(0);
-            }
             // LDH A,(n)
             0xF0 => {
                 // put value at $FF00+n into A
@@ -1174,31 +1136,6 @@ impl CPU {
             },
             // DI
             0xF3 => self.ime = false, // TODO maybe change to enable after next instruction
-            // PUSH AF
-            0xF5 => {
-                // push register pair onto stack, decrement stack by 2
-                let cur_sp = self.registers.get_sp();
-
-                // write upper byte to stack
-                self.memory.write(cur_sp, self.registers.get_a());
-                // write lower byte to stack
-                self.memory.write(cur_sp - 1, self.registers.get_f());
-                // decrement stack
-                self.registers.set_sp(cur_sp - 2);
-            },
-            // OR d8
-            0xF6 => {
-                let imm = self.memory.read(cur_pc + 1);
-                // OR the immediate value with register A
-                let res = self.registers.get_a() | imm;
-                self.registers.set_a(res);
-
-                // set flags
-                self.registers.set_flag_zero( (res == 0) as u8);
-                self.registers.set_flag_carry(0);
-                self.registers.set_flag_half_carry(0);
-                self.registers.set_flag_sub(0);
-            },
             // LDHL SP,n
             0xF8 => {
                 let imm = ((self.get_imm_1byte(cur_pc) as i8) as i16) as u16;
@@ -1272,6 +1209,7 @@ mod tests {
         cpu.registers.set_a(40u8);
         cpu.registers.set_b(19u8);
         cpu.registers.set_c(250u8);
+        cpu.registers.set_d(179u8);
 
         // load ADD A,B
         cpu.memory.write(0, 0x80);
@@ -1279,6 +1217,7 @@ mod tests {
         cpu.memory.write(1,0xC6);
         cpu.memory.write(2, 24);
         cpu.memory.write(3, 0x81);
+        cpu.memory.write(4, 0x82);
 
         // test ADD A,B
         cpu.exec();
@@ -1305,6 +1244,18 @@ mod tests {
         assert_eq!(cpu.registers.get_flag_half_carry(), 0);
         assert_eq!(cpu.registers.get_flag_carry(), 1);
 
+        // test ADD A,D
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 0);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 1);
+
+    }
+
+    #[test]
+    fn sub() {
 
     }
 }
