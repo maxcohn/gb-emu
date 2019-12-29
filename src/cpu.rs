@@ -605,8 +605,20 @@ impl CPU {
                 };
                 self.registers.set_b(v);
             },
-            // LD B,A
-            0x47 => self.registers.set_b(self.registers.get_a()),
+            // LD n,A
+            0x47 | 0x4F | 0x57 | 0x5F | 0x67 | 0x6F | 0x77 => {
+                let a = self.registers.get_a();
+                match cur_op {
+                    0x47 => self.registers.set_b(a),
+                    0x4F => self.registers.set_c(a),
+                    0x57 => self.registers.set_d(a),
+                    0x5F => self.registers.set_e(a),
+                    0x67 => self.registers.set_h(a),
+                    0x6F => self.registers.set_l(a),
+                    0x77 => self.memory.write(self.registers.get_hl(), a),
+                    _ => panic!("Opcode '{}' landed in LD n,A match arm", cur_op),
+                }
+            },
             // LD C,n
             0x48..=0x4E => {
                 let v = match cur_op {
@@ -621,8 +633,6 @@ impl CPU {
                 };
                 self.registers.set_c(v);
             },
-            // LD C,A
-            0x4F => self.registers.set_c(self.registers.get_a()),
             // LD D,n
             0x50..=0x56 => {
                 let v = match cur_op {
@@ -637,8 +647,6 @@ impl CPU {
                 };
                 self.registers.set_d(v);
             },
-            // LD D,A
-            0x57 => self.registers.set_d(self.registers.get_a()),
             // LD E,n
             0x58..=0x5E => {
                 let v = match cur_op {
@@ -653,8 +661,6 @@ impl CPU {
                 };
                 self.registers.set_e(v);
             },
-            // LD E,A
-            0x5F => self.registers.set_e(self.registers.get_a()),
             // LD H,n
             0x60..=0x66 => {
                 let v = match cur_op {
@@ -669,8 +675,6 @@ impl CPU {
                 };
                 self.registers.set_h(v);
             },
-            // LD H,A
-            0x67 => self.registers.set_h(self.registers.get_a()),
             // LD L,n
             0x68..=0x6E => {
                 let v = match cur_op {
@@ -685,8 +689,6 @@ impl CPU {
                 };
                 self.registers.set_l(v);
             },
-            // LD L,A
-            0x6F => self.registers.set_l(self.registers.get_a()),
             // LD (HL),n
             0x70..=0x75 => {
                 let v = match cur_op {
@@ -702,11 +704,6 @@ impl CPU {
             },
             // HALT
             0x76 => self.halted = true,
-            // LD (HL),A
-            0x77 => {
-                let v = self.registers.get_hl();
-                self.memory.write(v, self.registers.get_a());
-            }
             // LD A,n
             0x78..=0x7F | 0x0A | 0x1A | 0x3E | 0xFA => {
                 let v = match cur_op {
@@ -781,7 +778,7 @@ impl CPU {
                 self.registers.set_flag_half_carry(((a & 0x0F) + (carry & 0x0F) + (v & 0x0F) > 0x0F) as u8);
                 self.registers.set_flag_sub(0);
             },
-            // SUB,n
+            // SUB A,n
             0x90..=0x97 | 0xD6 => {
                 let v = match cur_op {
                     0x90 => self.registers.get_b(),
@@ -1152,6 +1149,7 @@ impl CPU {
             },
             // LD SP,HL
             0xF9 => self.registers.set_sp(self.registers.get_hl()),
+            // EI
             0xFB => self.ime = true, // TODO maybe change to enable after next instruction
             _ => panic!("Unimplemented opcode: {:X?}", cur_op)
         }
