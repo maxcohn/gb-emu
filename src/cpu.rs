@@ -242,18 +242,18 @@ impl CPU {
                     0x3C => self.registers.get_a(),
                     _ => panic!("Opcode '{:X?}' in INC n match arm", cur_op),
                 };
-                let res = v + 1;
+                let res = v.wrapping_add(1);
 
                 // set register to incremented version
                 match cur_op {
-                    0x04 => self.registers.set_b(v),
-                    0x0C => self.registers.set_c(v),
-                    0x14 => self.registers.set_d(v),
-                    0x1C => self.registers.set_e(v),
-                    0x24 => self.registers.set_h(v),
-                    0x2C => self.registers.set_l(v),
-                    0x34 => self.memory.write(self.registers.get_hl(), v),
-                    0x3C => self.registers.set_a(v),
+                    0x04 => self.registers.set_b(res),
+                    0x0C => self.registers.set_c(res),
+                    0x14 => self.registers.set_d(res),
+                    0x1C => self.registers.set_e(res),
+                    0x24 => self.registers.set_h(res),
+                    0x2C => self.registers.set_l(res),
+                    0x34 => self.memory.write(self.registers.get_hl(), res),
+                    0x3C => self.registers.set_a(res),
                     _ => panic!("Opcode '{:X?}' in INC n match arm", cur_op),
                 }
 
@@ -773,7 +773,7 @@ impl CPU {
                     0x8D => self.registers.get_l(),
                     0x8E => self.memory.read(self.registers.get_hl()),
                     0x8F => self.registers.get_a(),
-                    0xCE => self.memory.read(cur_pc + 1),
+                    0xCE => self.get_imm_1byte(cur_pc),
                     _ => panic!("Opcode: '{:X?}' seen within range 0x88..0x8F and 0xCE match arm", cur_op),
                 };
                 let a = self.registers.get_a();
@@ -832,7 +832,7 @@ impl CPU {
                 };
                 let a = self.registers.get_a();
                 let c = self.registers.get_flag_carry();
-                let res = v.wrapping_sub(a.wrapping_sub(c));
+                let res = a.wrapping_sub(v.wrapping_sub(c));
 
 
                 self.registers.set_flag_zero((res == 0) as u8);
@@ -1302,4 +1302,79 @@ mod tests {
         assert_eq!(cpu.registers.get_flag_carry(), 1);
 
     }
+
+    #[test]
+    fn adc() {
+        let mut cpu = CPU::new_empty_mem();
+
+        cpu.registers.set_a(30);
+        cpu.registers.set_b(30);
+        cpu.registers.set_flag_carry(1);
+
+        cpu.memory.write(0, 0x88);
+        cpu.memory.write(1, 0xCE);
+        cpu.memory.write(2, 195);
+
+
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 61);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 0);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 1);
+    }
+
+    //#[test]
+    //fn sbc() {
+    //    todo!();
+    //}
+
+    #[test]
+    fn inc() {
+        // the reason for testing each of the instructions is because there is a second match statement
+        // and I'd like to avoid typos being the bane of my debugging experience
+
+        let mut cpu = CPU::new_empty_mem();
+
+        cpu.registers.set_a(1);
+        cpu.registers.set_b(2);
+        cpu.registers.set_c(3);
+        cpu.registers.set_d(4);
+        cpu.registers.set_e(5);
+        cpu.registers.set_h(6);
+        cpu.registers.set_l(255);
+
+        cpu.memory.write(0, 0x3C); // a
+        cpu.memory.write(1, 0x04); // b
+        cpu.memory.write(2, 0x0C); // c
+        cpu.memory.write(3, 0x14); // d
+        cpu.memory.write(4, 0x1C); // e
+        cpu.memory.write(5, 0x24); // h
+        cpu.memory.write(6, 0x2C); // l
+
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 2);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_b(), 3);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_c(), 4);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_d(), 5);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_e(), 6);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_h(), 7);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_l(), 0);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+
+    }
+
 }
