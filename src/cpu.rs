@@ -135,17 +135,18 @@ const CB_MNEMONICS: [&str; 0x100] = [
 
 /// Checks if the addition of two number results in a half carry
 fn half_carry_add(a: u8, b: u8) -> bool {
-    (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10
+    (((a & 0xF) + (b & 0xF)) & 0x10) == 0x10
 }
 
 /// Checks if the addition of two numbers results in a carry
 fn carry_add(a: u8, b: u8) -> bool {
-    a > (0xff - b)
+    a > (0xFF - b)
 }
 
 /// Checks if the subtraction of two numbers results in a borrow in the 4th bit
 fn half_carry_sub(a: u8, b: u8) -> bool {
-    ((a & 0xF) - (b & 0xF)) < 0
+    (a & 0x0F) < (b & 0x0F)
+    //((a & 0xF) - (b & 0xF)) < 0
 }
 
 /// Checks if the substraction of two numbers results in a borrow
@@ -167,6 +168,17 @@ pub struct CPU {
 impl CPU {
     /// Create a new CPU struct
     pub fn new() -> CPU {
+        CPU {
+            registers: Registers::new(),
+            memory: Memory::new(),
+            ime: false, // IME is off by default
+            halted: false,
+        }
+    }
+
+    /// Create a new CPU struct, but with an empty `memory` field. This is used for testing to
+    /// guarantee empty memory
+    fn new_empty_mem() -> CPU {
         CPU {
             registers: Registers::new(),
             memory: Memory::new(),
@@ -789,11 +801,11 @@ impl CPU {
                     0x95 => self.registers.get_l(),
                     0x96 => self.memory.read(self.registers.get_hl()),
                     0x97 => self.registers.get_a(),
-                    0xD6 => self.memory.read(cur_pc + 1),
+                    0xD6 => self.get_imm_1byte(cur_pc),
                     _ => panic!("Opcode: '{:X?}' got into inner match arm, not supposed to happen", cur_op),
                 };
                 let a = self.registers.get_a();
-                let res = v - a;
+                let res = a.wrapping_sub(v);
 
                 // store result in register A
                 self.registers.set_a(res);
@@ -801,8 +813,8 @@ impl CPU {
                 // set flags
                 self.registers.set_flag_zero((res == 0) as u8);
                 self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry(half_carry_sub(v, a) as u8);
-                self.registers.set_flag_carry(carry_sub(v, a) as u8);
+                self.registers.set_flag_half_carry(half_carry_sub(a, v) as u8);
+                self.registers.set_flag_carry(carry_sub(a, v) as u8);
             },
             // SBC A,n
             0x98..=0x9F | 0xDE => {
@@ -1196,7 +1208,7 @@ mod tests {
     use super::*;
 
     fn before_each() -> CPU{
-        CPU::new()
+        CPU::new_empty_mem()
     }
 
     #[test]
@@ -1254,6 +1266,40 @@ mod tests {
 
     #[test]
     fn sub() {
+        let mut cpu = before_each();
+
+        cpu.registers.set_a(85);
+        cpu.registers.set_b(35);
+        cpu.registers.set_h(10);
+
+        cpu.memory.write(0, 0x90);
+        cpu.memory.write(1, 0xD6);
+        cpu.memory.write(2, 50);
+        cpu.memory.write(3, 0x94);
+
+        // SUB A,B
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 50);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 1);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // SUB A,50
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 0);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+        assert_eq!(cpu.registers.get_flag_sub(), 1);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // SUB A,D
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 246);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 1);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 1);
 
     }
 }
