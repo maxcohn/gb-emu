@@ -226,8 +226,27 @@ impl CPU {
                 let v = self.registers.get_bc();
                 self.memory.write(v, self.registers.get_a());
             },
-            // INC BC
-            0x03 => self.registers.set_bc(self.registers.get_bc() + 1),
+            // INC nn
+            0x03 | 0x13 | 0x23 | 0x33 => {
+                let v = match cur_op {
+                    0x03 => self.registers.get_bc(),
+                    0x13 => self.registers.get_de(),
+                    0x23 => self.registers.get_hl(),
+                    0x33 => self.registers.get_sp(),
+                    _ => panic!("Opcode '{}' landed in INC nn match arm", cur_op),
+                };
+
+                let res = v.wrapping_add(1);
+
+                match cur_op {
+                    0x03 => self.registers.set_bc(res),
+                    0x13 => self.registers.set_de(res),
+                    0x23 => self.registers.set_hl(res),
+                    0x33 => self.registers.set_sp(res),
+                    _ => panic!("Opcode '{}' landed in INC nn match arm", cur_op),
+                }
+
+            },
             // INC n
             0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
                 // get original value and then calculate new value
@@ -262,24 +281,39 @@ impl CPU {
                 self.registers.set_flag_half_carry(half_carry_add(v, res) as u8);
                 self.registers.set_flag_zero((res == 0) as u8);
             },
-            // DEC B
-            0x05 => {
+            // DEC n
+            0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
                 // get original value and then calculate new value
-                let v = self.registers.get_b();
-                let res = v - 1;
+                let v = match cur_op {
+                    0x05 => self.registers.get_b(),
+                    0x0D => self.registers.get_c(),
+                    0x15 => self.registers.get_d(),
+                    0x1D => self.registers.get_e(),
+                    0x25 => self.registers.get_h(),
+                    0x2D => self.registers.get_l(),
+                    0x35 => self.memory.read(self.registers.get_hl()),
+                    0x3D => self.registers.get_a(),
+                    _ => panic!("Opcode '{:X?}' in INC n match arm", cur_op),
+                };
+                let res = v.wrapping_sub(1);
 
                 // set register to incremented version
-                self.registers.set_b(res);
+                match cur_op {
+                    0x05 => self.registers.set_b(res),
+                    0x0D => self.registers.set_c(res),
+                    0x15 => self.registers.set_d(res),
+                    0x1D => self.registers.set_e(res),
+                    0x25 => self.registers.set_h(res),
+                    0x2D => self.registers.set_l(res),
+                    0x35 => self.memory.write(self.registers.get_hl(), res),
+                    0x3D => self.registers.set_a(res),
+                    _ => panic!("Opcode '{:X?}' in INC n match arm", cur_op),
+                }
 
                 // set flags
                 self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
+                self.registers.set_flag_half_carry(half_carry_sub(v, res) as u8);
                 self.registers.set_flag_zero((res == 0) as u8);
-            },
-            // LD B,n
-            0x06 => {
-                let v = self.memory.read(cur_pc + 1);
-                self.registers.set_b(v);
             },
             // RLCA
             0x07 => {
@@ -318,26 +352,25 @@ impl CPU {
                 // check for carry in upper byte
                 self.registers.set_flag_carry(carry_add(((hl & 0xFF00) >> 8) as u8, ((v & 0xFF00) >> 8) as u8) as u8);
             },
-            // DEC BC
-            0x0B => self.registers.set_bc(self.registers.get_bc() - 1),
-            // DEC C
-            0x0D => {
-                // get original value and then calculate new value
-                let v = self.registers.get_c();
-                let res = v - 1;
+            // DEC nn
+            0x0B | 0x1B | 0x2B | 0x3B => {
+                let v = match cur_op {
+                    0x0B => self.registers.get_bc(),
+                    0x1B => self.registers.get_de(),
+                    0x2B => self.registers.get_hl(),
+                    0x3B => self.registers.get_sp(),
+                    _ => panic!("Opcode '{}' landed in DEC nn match arm", cur_op),
+                };
 
-                // set register to incremented version
-                self.registers.set_c(res);
+                let res = v.wrapping_sub(1);
 
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
-            // LD C,n
-            0x0E => {
-                let v = self.memory.read(cur_pc + 1);
-                self.registers.set_c(v);
+                match cur_op {
+                    0x0B => self.registers.set_bc(res),
+                    0x1B => self.registers.set_de(res),
+                    0x2B => self.registers.set_hl(res),
+                    0x3B => self.registers.set_sp(res),
+                    _ => panic!("Opcode '{}' landed in DEC nn match arm", cur_op),
+                }
             },
             // RRCA
             0x0F => {
@@ -366,27 +399,6 @@ impl CPU {
                 let v = self.registers.get_de();
                 self.memory.write(v, self.registers.get_a());
             },
-            // INC DE
-            0x13 => self.registers.set_de(self.registers.get_de() + 1),
-            // DEC D
-            0x15 => {
-                // get original value and then calculate new value
-                let v = self.registers.get_d();
-                let res = v - 1;
-
-                // set register to incremented version
-                self.registers.set_d(res);
-
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
-            // LD D,n
-            0x16 => {
-                let v = self.memory.read(cur_pc + 1);
-                self.registers.set_d(v);
-            },
             // RLA
             0x17 => {
                 let a = self.registers.get_a();
@@ -408,27 +420,6 @@ impl CPU {
                 // set PC to PC + immediate value
                 self.registers.set_pc(new_pc);
                 inc_pc = false;
-            },
-            // DEC DE
-            0x1B => self.registers.set_de(self.registers.get_de() - 1),
-            // DEC E
-            0x1D => {
-                // get original value and then calculate new value
-                let v = self.registers.get_e();
-                let res = v - 1;
-
-                // set register to incremented version
-                self.registers.set_e(res);
-
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
-            // LD E,n
-            0x1E => {
-                let v = self.memory.read(cur_pc + 1);
-                self.registers.set_e(v);
             },
             // RRA
             0x1F => {
@@ -478,56 +469,14 @@ impl CPU {
                 self.memory.write(self.registers.get_hl(), self.registers.get_a());
                 self.registers.set_hl(self.registers.get_hl() + 1);
             },
-            // INC HL
-            0x23 => self.registers.set_hl(self.registers.get_hl() + 1),
-            // DEC H
-            0x25 => {
-                // get original value and then calculate new value
-                let v = self.registers.get_h();
-                let res = v - 1;
-
-                // set register to incremented version
-                self.registers.set_h(res);
-
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
-            // LD H,n
-            0x26 => {
-                let v = self.memory.read(cur_pc + 1);
-                self.registers.set_h(v);
-            },
             // DAA
-            //0x27 => {panic!("UNIMPLEMENTED 0x27");},
+            0x27 => {panic!("UNIMPLEMENTED 0x27");},
             // LDI A,(HL) - LD A,(HL+) - LD A,(HLI)
             0x2A => {
                 // put value at addr HL into A, increment HL
                 let v = self.memory.read(self.registers.get_hl());
                 self.registers.set_a(v);
                 self.registers.set_hl(self.registers.get_hl() + 1);
-            },
-            // DEC HL
-            0x2B => self.registers.set_hl(self.registers.get_hl() - 1),
-            // DEC L
-            0x2D => {
-                // get original value and then calculate new value
-                let v = self.registers.get_l();
-                let res = v - 1;
-
-                // set register to incremented version
-                self.registers.set_l(res);
-
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
-            // LD L,n
-            0x2E => {
-                let v = self.memory.read(cur_pc + 1);
-                self.registers.set_l(v);
             },
             // CPL
             0x2F => self.registers.set_a(!self.registers.get_a()),
@@ -541,22 +490,6 @@ impl CPU {
                 // put A into address HL, decrement HL
                 self.memory.write(self.registers.get_hl(), self.registers.get_a());
                 self.registers.set_hl(self.registers.get_hl() - 1);
-            },
-            // INC SP
-            0x33 => self.registers.set_sp(self.registers.get_sp() + 1),
-            // DEC (HL)
-            0x35 => {
-                // get original value and then calculate new value
-                let v = self.memory.read(self.registers.get_hl());
-                let res = v - 1;
-
-                // set register to incremented version
-                self.memory.write(self.registers.get_hl(), res);
-
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
             },
             // LD (HL),n
             0x36 => {
@@ -576,22 +509,6 @@ impl CPU {
                 self.registers.set_a(v);
                 self.registers.set_hl(self.registers.get_hl() - 1);
             },
-            // DEC sp
-            0x3B => self.registers.set_sp(self.registers.get_sp() - 1),
-            // DEC A
-            0x3D => {
-                // get original value and then calculate new value
-                let v = self.registers.get_a();
-                let res = v - 1;
-
-                // set register to incremented version
-                self.registers.set_a(res);
-
-                // set flags
-                self.registers.set_flag_sub(1);
-                self.registers.set_flag_half_carry((v.trailing_zeros() >= 4) as u8);
-                self.registers.set_flag_zero((res == 0) as u8);
-            },
             // CCF
             0x3F => {
                 let c = if self.registers.get_flag_carry() == 0 {
@@ -604,8 +521,9 @@ impl CPU {
                 self.registers.set_flag_carry(c);
             },
             // LD B,n
-            0x40..=0x46 => {
+            0x40..=0x46 | 0x06 => {
                 let v = match cur_op {
+                    0x06 => self.get_imm_1byte(cur_pc),
                     0x40 => self.registers.get_b(),
                     0x41 => self.registers.get_c(),
                     0x42 => self.registers.get_d(),
@@ -613,7 +531,7 @@ impl CPU {
                     0x44 => self.registers.get_h(),
                     0x45 => self.registers.get_l(),
                     0x46 => self.memory.read(self.registers.get_hl()),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x40..0x46 but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' in LD B,n match arm.", cur_op),
                 };
                 self.registers.set_b(v);
             },
@@ -632,8 +550,9 @@ impl CPU {
                 }
             },
             // LD C,n
-            0x48..=0x4E => {
+            0x48..=0x4E | 0x0E => {
                 let v = match cur_op {
+                    0x0E => self.get_imm_1byte(cur_pc),
                     0x48 => self.registers.get_b(),
                     0x49 => self.registers.get_c(),
                     0x4A => self.registers.get_d(),
@@ -641,13 +560,14 @@ impl CPU {
                     0x4C => self.registers.get_h(),
                     0x4D => self.registers.get_l(),
                     0x4E => self.memory.read(self.registers.get_hl()),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x48..0x4E but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' seen in LD C,n match arm.", cur_op),
                 };
                 self.registers.set_c(v);
             },
             // LD D,n
-            0x50..=0x56 => {
+            0x50..=0x56 | 0x16 => {
                 let v = match cur_op {
+                    0x16 => self.get_imm_1byte(cur_pc),
                     0x50 => self.registers.get_b(),
                     0x51 => self.registers.get_c(),
                     0x52 => self.registers.get_d(),
@@ -655,13 +575,14 @@ impl CPU {
                     0x54 => self.registers.get_h(),
                     0x55 => self.registers.get_l(),
                     0x56 => self.memory.read(self.registers.get_hl()),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x50..0x56 but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' in LD D,n match arm", cur_op),
                 };
                 self.registers.set_d(v);
             },
             // LD E,n
-            0x58..=0x5E => {
+            0x58..=0x5E | 0x1E => {
                 let v = match cur_op {
+                    0x1E => self.get_imm_1byte(cur_pc),
                     0x58 => self.registers.get_b(),
                     0x59 => self.registers.get_c(),
                     0x5A => self.registers.get_d(),
@@ -669,13 +590,14 @@ impl CPU {
                     0x5C => self.registers.get_h(),
                     0x5D => self.registers.get_l(),
                     0x5E => self.memory.read(self.registers.get_hl()),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x58..0x5E but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' in LD E,n match arm.", cur_op),
                 };
                 self.registers.set_e(v);
             },
             // LD H,n
-            0x60..=0x66 => {
+            0x60..=0x66 | 0x26 => {
                 let v = match cur_op {
+                    0x26 => self.get_imm_1byte(cur_pc),
                     0x60 => self.registers.get_b(),
                     0x61 => self.registers.get_c(),
                     0x62 => self.registers.get_d(),
@@ -683,13 +605,14 @@ impl CPU {
                     0x64 => self.registers.get_h(),
                     0x65 => self.registers.get_l(),
                     0x66 => self.memory.read(self.registers.get_hl()),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x60..0x46 but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' in LD H,n match arm.", cur_op),
                 };
                 self.registers.set_h(v);
             },
             // LD L,n
-            0x68..=0x6E => {
+            0x68..=0x6E | 0x2E => {
                 let v = match cur_op {
+                    0x2E => self.get_imm_1byte(cur_pc),
                     0x68 => self.registers.get_b(),
                     0x69 => self.registers.get_c(),
                     0x6A => self.registers.get_d(),
@@ -697,7 +620,7 @@ impl CPU {
                     0x6C => self.registers.get_h(),
                     0x6D => self.registers.get_l(),
                     0x6E => self.memory.read(self.registers.get_hl()),
-                    _ => panic!("Opcode: '{:X?}' seen within range 0x68..0x6E but was not", cur_op),
+                    _ => panic!("Opcode: '{:X?}' in LD L,n match arm.", cur_op),
                 };
                 self.registers.set_l(v);
             },
@@ -832,7 +755,9 @@ impl CPU {
                 };
                 let a = self.registers.get_a();
                 let c = self.registers.get_flag_carry();
-                let res = a.wrapping_sub(v.wrapping_sub(c));
+                let res = a.wrapping_sub(v.wrapping_add(c));
+
+                self.registers.set_a(res);
 
 
                 self.registers.set_flag_zero((res == 0) as u8);
@@ -1152,12 +1077,12 @@ impl CPU {
 
                 let res = sp + imm;
 
-                self.registers.set_sp(sp + imm);
+                self.registers.set_sp(res);
 
                 self.registers.set_flag_zero(0);
                 self.registers.set_flag_sub(0);
-                self.registers.set_flag_half_carry(half_carry_add((sp & 0xFF) as u8, (imm & 0xFF) as u8) as u8);
-                self.registers.set_flag_carry(carry_add((sp & 0xFF) as u8, (imm & 0xFF) as u8) as u8);
+                self.registers.set_flag_half_carry(half_carry_add((sp & 0xFF) as u8, (res & 0xFF) as u8) as u8);
+                self.registers.set_flag_carry(carry_add((sp & 0xFF) as u8, (res & 0xFF) as u8) as u8);
             },
             // LD SP,HL
             0xF9 => self.registers.set_sp(self.registers.get_hl()),
@@ -1331,13 +1256,60 @@ mod tests {
         assert_eq!(cpu.registers.get_flag_carry(), 1);
     }
 
-    //#[test]
-    //fn sbc() {
-    //    todo!();
-    //}
+    #[test]
+    fn sbc() {
+        let mut cpu = CPU::new_empty_mem();
+
+        cpu.registers.set_a(40);
+        cpu.registers.set_b(30);
+        cpu.registers.set_flag_carry(1);
+
+        cpu.memory.write(0, 0x98);
+        cpu.memory.write(1, 0xDE);
+        cpu.memory.write(2, 10);
+
+
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 9);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 1);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 255);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 1);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 1);
+        assert_eq!(cpu.registers.get_flag_carry(), 1);
+    }
 
     #[test]
-    fn inc() {
+    fn inc_u16() {
+        let mut cpu = CPU::new_empty_mem();
+
+        cpu.registers.set_bc(100);
+        cpu.registers.set_de(140);
+        cpu.registers.set_hl(u16::max_value());
+        cpu.registers.set_sp(0);
+
+        cpu.memory.write(0, 0x03);
+        cpu.memory.write(1, 0x13);
+        cpu.memory.write(2, 0x23);
+        cpu.memory.write(3, 0x33);
+
+        cpu.exec();
+        assert_eq!(101, cpu.registers.get_bc());
+        cpu.exec();
+        assert_eq!(141, cpu.registers.get_de());
+        cpu.exec();
+        assert_eq!(0, cpu.registers.get_hl());
+        cpu.exec();
+        assert_eq!(1, cpu.registers.get_sp());
+    }
+
+    #[test]
+    fn inc_u8() {
         // the reason for testing each of the instructions is because there is a second match statement
         // and I'd like to avoid typos being the bane of my debugging experience
 
@@ -1374,6 +1346,71 @@ mod tests {
         cpu.exec();
         assert_eq!(cpu.registers.get_l(), 0);
         assert_eq!(cpu.registers.get_flag_zero(), 1);
+
+    }
+
+    #[test]
+    fn dec_u16() {
+        let mut cpu = CPU::new_empty_mem();
+
+        cpu.registers.set_bc(100);
+        cpu.registers.set_de(140);
+        cpu.registers.set_hl(u16::max_value());
+        cpu.registers.set_sp(0);
+
+        cpu.memory.write(0, 0x0B);
+        cpu.memory.write(1, 0x1B);
+        cpu.memory.write(2, 0x2B);
+        cpu.memory.write(3, 0x3B);
+
+        cpu.exec();
+        assert_eq!(99, cpu.registers.get_bc());
+        cpu.exec();
+        assert_eq!(139, cpu.registers.get_de());
+        cpu.exec();
+        assert_eq!(u16::max_value() - 1, cpu.registers.get_hl());
+        cpu.exec();
+        assert_eq!(u16::max_value(), cpu.registers.get_sp());
+    }
+
+    #[test]
+    fn dec_u8() {
+        // the reason for testing each of the instructions is because there is a second match statement
+        // and I'd like to avoid typos being the bane of my debugging experience
+
+        let mut cpu = CPU::new_empty_mem();
+
+        cpu.registers.set_a(1);
+        cpu.registers.set_b(2);
+        cpu.registers.set_c(3);
+        cpu.registers.set_d(4);
+        cpu.registers.set_e(5);
+        cpu.registers.set_h(6);
+        cpu.registers.set_l(0);
+
+        cpu.memory.write(0, 0x3D); // a
+        cpu.memory.write(1, 0x05); // b
+        cpu.memory.write(2, 0x0D); // c
+        cpu.memory.write(3, 0x15); // d
+        cpu.memory.write(4, 0x1D); // e
+        cpu.memory.write(5, 0x25); // h
+        cpu.memory.write(6, 0x2D); // l
+
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 0);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_b(), 1);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_c(), 2);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_d(), 3);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_e(), 4);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_h(), 5);
+        cpu.exec();
+        assert_eq!(cpu.registers.get_l(), 255);
 
     }
 

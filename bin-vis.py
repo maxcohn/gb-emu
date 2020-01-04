@@ -1,6 +1,3 @@
-#!/usr/bin/python3.7
-
-
 import sys
 
 if len(sys.argv) != 4:
