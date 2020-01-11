@@ -1,6 +1,7 @@
 //use registers;
 
-/*
+/*  Memory Map:
+
     0000-3FFF   16KB ROM Bank 00     (in cartridge, fixed at bank 00)
     4000-7FFF   16KB ROM Bank 01..NN (in cartridge, switchable bank number)
     8000-9FFF   8KB Video RAM (VRAM) (switchable bank 0-1 in CGB Mode)

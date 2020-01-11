@@ -146,7 +146,6 @@ fn carry_add(a: u8, b: u8) -> bool {
 /// Checks if the subtraction of two numbers results in a borrow in the 4th bit
 fn half_carry_sub(a: u8, b: u8) -> bool {
     (a & 0x0F) < (b & 0x0F)
-    //((a & 0xF) - (b & 0xF)) < 0
 }
 
 /// Checks if the substraction of two numbers results in a borrow
@@ -167,10 +166,19 @@ pub struct CPU {
 
 impl CPU {
     /// Create a new CPU struct
-    pub fn new() -> CPU {
+    pub fn new(memory: Memory) -> CPU {
         CPU {
             registers: Registers::new(),
-            memory: Memory::new(),
+            memory: memory,//Memory::new(),
+            ime: false, // IME is off by default
+            halted: false,
+        }
+    }
+
+    pub fn new_custom(registers: Registers, memory: Memory) -> CPU {
+        CPU {
+            registers: registers,
+            memory: memory,//Memory::new(),
             ime: false, // IME is off by default
             halted: false,
         }
@@ -193,12 +201,12 @@ impl CPU {
 
         println!("Addr:{:X?}", cur_pc);
         //println!("{:X?}", cur_op);
-        println!("{:?}", OP_MNEMONICS[cur_op as usize]);
+        println!("OP: 0x{:X?} - {:?}", cur_op, OP_MNEMONICS[cur_op as usize]);
         println!("Cycles: {:?}", OP_CYCLES[cur_op as usize]);
         println!("Length: {:?}", OP_LENGTHS[cur_op as usize]);
         println!();
         self.exec();
-        self.registers.set_pc(cur_pc + OP_LENGTHS[cur_op as usize] as u16);
+        //self.registers.set_pc(cur_pc + OP_LENGTHS[cur_op as usize] as u16);
 
         cur_op
     }
@@ -211,12 +219,9 @@ impl CPU {
         // whether we should increment the PC. True most of the time, false when jumping.
         let mut inc_pc = true;
 
-        // cycles that aren't caused directly by the cur_op (mainly for use with 0xCB prefixed ops)
-        let mut added_cycles = 0;
-
         match cur_op {
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
-                panic!("Opcode '{}' is unused and should not have occurred.", cur_op);
+                panic!("Opcode '{:X?}' is unused and should not have occurred.", cur_op);
             },
             // NOP
             0x00 => {},
@@ -334,6 +339,7 @@ impl CPU {
             },
             // LD (nn),SP
             0x08 => {
+                //TODO: this might be wrong
                 let v = ( (self.memory.read(cur_pc + 1) as u16) << 8) | (self.memory.read(cur_pc + 2) as u16);
                 self.registers.set_sp(v);
             },
@@ -445,8 +451,19 @@ impl CPU {
             // JR cc,n
             0x20 | 0x28 | 0x30 | 0x38 => {
                 // get immediate value (have to do some interesting casting for addition later)
-                let imm = self.get_imm_1byte(cur_pc) as i8 as i16 as u16;
-                let new_pc = cur_pc + imm;
+                //TODO: try with testrom and compare to accurate emulator
+                let imm = self.get_imm_1byte(cur_pc) as i8;
+                println!("DEBUG: {:X?} or {}", imm, imm);
+
+                let new_pc = if imm < 0 {
+                    cur_pc.wrapping_sub(imm.abs() as u16)
+                } else {
+                    cur_pc.wrapping_add(imm as u16)
+                };
+
+                //let new_pc = u16::from(i32::from(cur_pc).wrapping_add(imm));
+                println!("DEBUG: {:X?}", new_pc);
+                //let new_pc = cur_pc.wrapping_add(5u16);
 
                 let is_jump = match cur_op {
                     0x20 => !(self.registers.get_flag_zero() != 0),
@@ -997,6 +1014,7 @@ impl CPU {
 
                 // cycles are incremented at the end
                 let cycles = self.exec_cb();
+                //TODO: use cycles
 
                 // all CB prefixed instructions are 2 bytes long.
                 self.registers.set_pc(cur_pc + 2);
@@ -1107,9 +1125,9 @@ impl CPU {
         }
 
         // the total cycles passed is based on the OP, and is additional if CB prefixed
-        let cycles_passed = OP_CYCLES[cur_op as usize] + added_cycles;
+        let cycles_passed = OP_CYCLES[cur_op as usize];
 
-        //TODO possibly replace with table?
+        //TODO: possibly replace with table?
 
         // if we are supposed to increment the program counter, we do so
         if inc_pc {
@@ -1236,8 +1254,8 @@ impl CPU {
     /// Returns the two byte immediate value following the given PC. Doesn't move the PC!
     fn get_imm_2byte(&self, pc: u16) -> u16 {
         // get least and most significant bytes.
-        let ls = self.memory.read(pc);
-        let ms = self.memory.read(pc + 1);
+        let ls = self.memory.read(pc + 1);
+        let ms = self.memory.read(pc + 2);
         ((ms as u16) << 8) | ((ls as u16) & 0xFF)
     }
 
@@ -1530,7 +1548,6 @@ mod tests {
 
     }
 
-
     #[test]
     fn swap() {
         let mut cpu = before_each();
@@ -1571,6 +1588,50 @@ mod tests {
         cpu.exec();
         assert_eq!(cpu.registers.get_e(), 0x00);
         assert_eq!(cpu.registers.get_flag_zero(), 1);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+    }
+
+    fn rlc() {
+        let mut cpu = before_each();
+
+        cpu.registers.set_a(0b1000_0000);
+        cpu.registers.set_d(0b0100_0000);
+        cpu.registers.set_e(0b0000_1000);
+
+        // RLC A
+        cpu.memory.write(0, 0xCB);
+        cpu.memory.write(1, 0x07);
+
+        // RLC D
+        cpu.memory.write(2, 0xCB);
+        cpu.memory.write(3, 0x02);
+
+        // RLC E
+        cpu.memory.write(4, 0xCB);
+        cpu.memory.write(5, 0x03);
+
+        // RLC A
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 0);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 1);
+
+        // RLC D
+        cpu.exec();
+        assert_eq!(cpu.registers.get_d(), 0b1000_0000);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // RLC E
+        cpu.exec();
+        assert_eq!(cpu.registers.get_e(), 0b0100_0000);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
         assert_eq!(cpu.registers.get_flag_sub(), 0);
         assert_eq!(cpu.registers.get_flag_half_carry(), 0);
         assert_eq!(cpu.registers.get_flag_carry(), 0);
