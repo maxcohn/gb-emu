@@ -203,12 +203,16 @@ impl CPU {
         cur_op
     }
 
+    /// Execute the current instruction
     pub fn exec(&mut self) {
         let cur_pc = self.registers.get_pc();
         let cur_op = self.memory.read(cur_pc);
 
         // whether we should increment the PC. True most of the time, false when jumping.
         let mut inc_pc = true;
+
+        // cycles that aren't caused directly by the cur_op (mainly for use with 0xCB prefixed ops)
+        let mut added_cycles = 0;
 
         match cur_op {
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
@@ -986,6 +990,14 @@ impl CPU {
                 self.registers.set_pc(addr);
                 inc_pc = false;
             },
+            0xCB => {
+                // increment the PC
+                inc_pc = false;
+                self.registers.set_pc(cur_pc + 1);
+
+                // cycles are incremented at the end
+                let cycles = self.exec_cb();
+            },
             // CALL nn
             0xCD => {
                 let imm = self.get_imm_2byte(cur_pc);
@@ -1091,7 +1103,8 @@ impl CPU {
             _ => panic!("Unimplemented opcode: {:X?}", cur_op)
         }
 
-        let cycles_passed = OP_CYCLES[cur_op as usize];
+        // the total cycles passed is based on the OP, and is additional if CB prefixed
+        let cycles_passed = OP_CYCLES[cur_op as usize] + added_cycles;
 
         //TODO possibly replace with table?
         // if we are supposed to increment the program counter, we do so
@@ -1099,6 +1112,21 @@ impl CPU {
             self.registers.set_pc(cur_pc + OP_LENGTHS[cur_op as usize] as u16);
         }
 
+    }
+
+    /// Execute CB-prefixed instructions
+    fn exec_cb(&mut self) -> u8 {
+        // get the current PC and OP at the PC. PC should already be incremented.
+        let cur_pc = self.registers.get_pc();
+        let cur_op = self.memory.read(cur_pc);
+
+        match cur_op {
+            
+            _ => panic!("Unimplemented opcode: '{}'.", cur_op),
+        }
+
+
+        return CB_CYCLES[cur_op];
     }
 
     /// Returns the top two bytes of the stack as a u16. Doesn't move SP!
