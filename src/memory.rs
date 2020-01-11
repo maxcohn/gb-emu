@@ -17,6 +17,8 @@
 
 use crate::cartridge::Cartridge;
 
+//TODO implement Cartridge struct
+//TODO implement so there is a way to have a blank array of mem for testing purposes
 pub struct Memory {
     mem: [u8; 0xFFFF],
     /*

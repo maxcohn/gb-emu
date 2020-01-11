@@ -997,6 +997,9 @@ impl CPU {
 
                 // cycles are incremented at the end
                 let cycles = self.exec_cb();
+
+                // all CB prefixed instructions are 2 bytes long.
+                self.registers.set_pc(cur_pc + 2);
             },
             // CALL nn
             0xCD => {
@@ -1107,6 +1110,7 @@ impl CPU {
         let cycles_passed = OP_CYCLES[cur_op as usize] + added_cycles;
 
         //TODO possibly replace with table?
+
         // if we are supposed to increment the program counter, we do so
         if inc_pc {
             self.registers.set_pc(cur_pc + OP_LENGTHS[cur_op as usize] as u16);
@@ -1120,13 +1124,97 @@ impl CPU {
         let cur_pc = self.registers.get_pc();
         let cur_op = self.memory.read(cur_pc);
 
+        println!("{:X?}: {}", cur_op, CB_MNEMONICS[cur_op as usize]);
+
         match cur_op {
-            
+            // RLC n
+            0x00..=0x07 => {
+                // get the target register
+                let v = match cur_op {
+                    0x00 => self.registers.get_b(),
+                    0x01 => self.registers.get_c(),
+                    0x02 => self.registers.get_d(),
+                    0x03 => self.registers.get_e(),
+                    0x04 => self.registers.get_h(),
+                    0x05 => self.registers.get_l(),
+                    0x06 => self.memory.read(self.registers.get_hl()),
+                    0x07 => self.registers.get_a(),
+                    _ => panic!("Opcode: '{}' landed in RLC n match arm.", cur_op),
+                };
+
+                // get new carry flag (bit 7)
+                let carry = (v & 0b1000_0000) >> 7;
+
+                // shit value 1 to the left
+                let res = v << 1;
+
+                // set result value
+                match cur_op {
+                    0x00 => self.registers.set_b(res),
+                    0x01 => self.registers.set_c(res),
+                    0x02 => self.registers.set_d(res),
+                    0x03 => self.registers.set_e(res),
+                    0x04 => self.registers.set_h(res),
+                    0x05 => self.registers.set_l(res),
+                    0x06 => self.memory.write(self.registers.get_hl(), res),
+                    0x07 => self.registers.set_a(res),
+                    _ => panic!("Opcode: '{}' landed in RLC n match arm.", cur_op),
+                }
+
+                // set flags
+                self.registers.set_flag_zero((res == 0) as u8);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_carry(carry);
+                
+            },
+            // SWAP n
+            0x30..=0x37 => {
+                // get the target register
+                let v = match cur_op {
+                    0x30 => self.registers.get_b(),
+                    0x31 => self.registers.get_c(),
+                    0x32 => self.registers.get_d(),
+                    0x33 => self.registers.get_e(),
+                    0x34 => self.registers.get_h(),
+                    0x35 => self.registers.get_l(),
+                    0x36 => self.memory.read(self.registers.get_hl()),
+                    0x37 => self.registers.get_a(),
+                    _ => panic!("Opcode: '{}' landed in SWAP n match arm.", cur_op),
+                };
+
+                let res = ((v & 0x0F) << 4) | ((v & 0xF0) >> 4);
+
+                // set result value
+                match cur_op {
+                    0x30 => self.registers.set_b(res),
+                    0x31 => self.registers.set_c(res),
+                    0x32 => self.registers.set_d(res),
+                    0x33 => self.registers.set_e(res),
+                    0x34 => self.registers.set_h(res),
+                    0x35 => self.registers.set_l(res),
+                    0x36 => self.memory.write(self.registers.get_hl(), res),
+                    0x37 => self.registers.set_a(res),
+                    _ => panic!("Opcode: '{}' landed in SWAP n match arm.", cur_op),
+                }
+                
+                // set zero flag if needed and reset all other flags
+                self.registers.set_flag_zero((res == 0) as u8);
+                self.registers.set_flag_sub(0);
+                self.registers.set_flag_half_carry(0);
+                self.registers.set_flag_carry(0);
+
+            },
+
+
+
             _ => panic!("Unimplemented opcode: '{}'.", cur_op),
         }
 
+        // increment PC
+        //TODO modify to allow for intermediate values (add inc_pc bool)
 
-        return CB_CYCLES[cur_op];
+        return CB_CYCLES[cur_op as usize];
     }
 
     /// Returns the top two bytes of the stack as a u16. Doesn't move SP!
@@ -1442,4 +1530,49 @@ mod tests {
 
     }
 
+
+    #[test]
+    fn swap() {
+        let mut cpu = before_each();
+
+        cpu.registers.set_a(0xF0);
+        cpu.registers.set_d(0x0F);
+        cpu.registers.set_e(0x00);
+
+        // SWAP A
+        cpu.memory.write(0, 0xCB);
+        cpu.memory.write(1, 0x37);
+
+        // SWAP D
+        cpu.memory.write(2, 0xCB);
+        cpu.memory.write(3, 0x32);
+
+        // SWAP E
+        cpu.memory.write(4, 0xCB);
+        cpu.memory.write(5, 0x33);
+
+        // SWAP A
+        cpu.exec();
+        assert_eq!(cpu.registers.get_a(), 0x0F);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // SWAP D
+        cpu.exec();
+        assert_eq!(cpu.registers.get_d(), 0xF0);
+        assert_eq!(cpu.registers.get_flag_zero(), 0);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+
+        // SWAP E
+        cpu.exec();
+        assert_eq!(cpu.registers.get_e(), 0x00);
+        assert_eq!(cpu.registers.get_flag_zero(), 1);
+        assert_eq!(cpu.registers.get_flag_sub(), 0);
+        assert_eq!(cpu.registers.get_flag_half_carry(), 0);
+        assert_eq!(cpu.registers.get_flag_carry(), 0);
+    }
 }
